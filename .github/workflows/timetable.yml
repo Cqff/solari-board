@@ -1,0 +1,70 @@
+name: 班表更新
+
+# 桃園機場的即時航班開放資料每 5 分鐘更新一次，這裡每 10 分鐘抓一次，轉成
+# data/timetable.json 給看板讀。
+#
+# GitHub 的排程是「盡力而為」的：尖峰時段常常延後、偶爾整輪跳過，所以實際間隔
+# 可能是 10 到 30 分鐘。看板本身不依賴這個檔案 —— 抓不到就用內建的示範班表。
+#
+# 排程只會在預設分支上跑，所以這支要合進 main 之後才會開始動。
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 上一輪還沒收工就讓它跑完，不要兩輪同時 push
+concurrency:
+  group: timetable
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 抓官方 CSV 產生班表
+        id: gen
+        run: |
+          set +e
+          node tools/fetch-timetable.mjs
+          code=$?
+          set -e
+          # 75 = 抓不到資料。對方掛掉或網路不順不算失敗，交給下一輪就好，
+          # 免得每 10 分鐘寄一封失敗通知。欄位對不到之類的真問題才會是 1。
+          if [ "$code" -eq 75 ]; then
+            echo "::warning::抓不到官方資料，這輪跳過，看板留著上一版班表"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+
+      - name: 有變動才 commit
+        if: steps.gen.outputs.skip != '1'
+        run: |
+          if [ -z "$(git status --porcelain -- data/timetable.json)" ]; then
+            echo "班表沒變，這輪不 commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/timetable.json
+          git commit -m "班表更新 $(date -u '+%Y-%m-%d %H:%M') UTC"
+
+          # 剛好有人推了東西就 rebase 再來一次，不要蓋掉別人的 commit
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            git pull --rebase origin "$GITHUB_REF_NAME" || exit 1
+          done
+          exit 1
