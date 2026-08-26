@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="機械翻頁看板 — 單區 10 行，可全螢幕。">
+<meta name="description" content="機械翻頁看板 — TPE 出境，現在往後四小時，單區 10 行。">
 <meta name="color-scheme" content="dark">
 <title>Solari 翻頁看板</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -164,7 +164,7 @@ body{
 .board-grid{
   width:max-content;
   display:grid;
-  grid-template-columns:auto auto auto auto;
+  /* column count is written from JS — COLS is the only place that decides it */
   align-items:center;
   column-gap:clamp(6px,calc(var(--u) * .5),14px);
   row-gap:clamp(5px,calc(var(--u) * .42),12px);
@@ -398,7 +398,7 @@ body.fs .fshint.show{ opacity:1; }
     </div>
     <div class="clockwrap">
       <span class="lamp live"></span>
-      <span class="cap">Local</span>
+      <span class="cap">Taipei</span>
       <div class="line" id="clock"></div>
     </div>
   </div>
@@ -466,7 +466,8 @@ body.fs .fshint.show{ opacity:1; }
 <div class="fshint" id="fshint">Esc 離開 · 1–4 切頻道 · Space 輪播</div>
 
 <p class="note">
-  10 行 · <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
+  10 行 · 航班頻道是台北時間往後 4 小時的 TPE 出境班次，狀態跟著時鐘走 ·
+  <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
 
@@ -555,7 +556,7 @@ body.fs .fshint.show{ opacity:1; }
      few milliseconds of bright edge tick for the plastic.
 
      It is also on a beat instead of one-per-flap: a full board update
-     is ~1000 individual flaps, and honestly reproducing that is a roar
+     is ~1300 individual flaps, and honestly reproducing that is a roar
      no matter how good each sample is. One clack per BEAT, weighted by
      how many flaps moved in that window, gives a countable mechanical
      tick that gets fuller when the board is busy.
@@ -789,11 +790,13 @@ body.fs .fshint.show{ opacity:1; }
   var NUMS = " 0123456789:.";
 
   var COLS = [
-    { key:"time",   n:5,  head:"時間 Time",        drum:NUMS },
-    { key:"body",   n:13, head:"內容 Destination", drum:DRUM },
-    { key:"status", n:8,  head:"狀態 Status",      drum:DRUM }
+    { key:"time",   n:5,  drum:NUMS },
+    { key:"flight", n:7,  drum:DRUM },
+    { key:"body",   n:13, drum:DRUM },
+    { key:"status", n:9,  drum:DRUM }
   ];
   var ROWS = 10;                           // rows on the board
+  var BLANK = ["", "", "", "", "idle"];    // what an unused row shows
 
   function div(cls, text){
     var d = document.createElement("div");
@@ -805,10 +808,17 @@ body.fs .fshint.show{ opacity:1; }
   // rows[] is 10 long and row.slot is its position on the board, which is what
   // the cascade beats on so the board sweeps top-down.
   var rows = [];
+  var headEls = [];
   (function(){
     var grid = document.getElementById("grid");
+    // one column for the lamp, then one per COLS entry
+    grid.style.gridTemplateColumns = "repeat(" + (COLS.length + 1) + ",auto)";
     grid.appendChild(div("colhead", ""));
-    COLS.forEach(function(c){ grid.appendChild(div("colhead", c.head)); });
+    COLS.forEach(function(){
+      var h = div("colhead", "");
+      headEls.push(h);
+      grid.appendChild(h);
+    });
 
     for(var r = 0; r < ROWS; r++){
       var lampCell = div("rowlamp");
@@ -831,70 +841,210 @@ body.fs .fshint.show{ opacity:1; }
   var subline = new Line(28, "sm", document.getElementById("subline"));
   var clock = new Line(8, "sm", document.getElementById("clock"), NUMS);
 
-  /* ---------- content channels ---------- */
+  /* ---------- TPE 每日班表 ----------
+     天天都是這張表，看板只把「現在往後四小時」那一段畫出來。
+
+     這是示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號與時刻
+     不是官方公告的班表，別拿它趕飛機。要換成真的，見 README「換成真的班表」。
+
+     每筆是 [起飛時間, 班機, 目的地]，時間是台北時間，照時刻排序。 */
+  var TIMETABLE = [
+    ["00:20","BR 067","VIENNA"],
+    ["00:55","CI 073","LONDON LHR"],
+    ["01:30","BR 087","AMSTERDAM"],
+    ["02:15","CI 023","LOS ANGELES"],
+    ["05:45","IT 282","OSAKA KIX"],
+    ["06:10","BR 802","HONG KONG"],
+    ["06:35","CI 152","TOKYO NRT"],
+    ["06:50","JX 820","OSAKA KIX"],
+    ["07:05","BR 172","SEOUL ICN"],
+    ["07:20","CI 581","XIAMEN"],
+    ["07:35","IT 610","MACAU"],
+    ["07:50","BR 108","TOKYO HND"],
+    ["08:05","JX 720","MANILA MNL"],
+    ["08:20","CI 100","TOKYO HND"],
+    ["08:35","TG 635","BANGKOK BKK"],
+    ["08:50","BR 226","SINGAPORE"],
+    ["09:05","CI 830","HONG KONG"],
+    ["09:20","JX 802","TOKYO NRT"],
+    ["09:35","IT 202","NAGOYA NGO"],
+    ["09:50","BR 132","FUKUOKA FUK"],
+    ["10:05","CI 660","HO CHI MINH"],
+    ["10:20","MH 367","KUALA LUMPUR"],
+    ["10:35","BR 256","BANGKOK BKK"],
+    ["10:50","CI 116","OSAKA KIX"],
+    ["11:10","JX 740","SINGAPORE"],
+    ["11:25","CX 465","HONG KONG"],
+    ["11:40","IT 236","SAPPORO CTS"],
+    ["11:55","BR 192","SEOUL ICN"],
+    ["12:10","CI 782","MANILA MNL"],
+    ["12:30","VN 577","HO CHI MINH"],
+    ["12:45","BR 118","TOKYO NRT"],
+    ["13:00","JX 826","FUKUOKA FUK"],
+    ["13:15","CI 620","HANOI HAN"],
+    ["13:30","SQ 879","SINGAPORE"],
+    ["13:45","IT 704","DA NANG"],
+    ["14:00","BR 872","SHANGHAI PVG"],
+    ["14:20","CI 502","HONG KONG"],
+    ["14:35","PR 897","MANILA MNL"],
+    ["14:50","JX 810","TOKYO HND"],
+    ["15:05","BR 212","JAKARTA CGK"],
+    ["15:20","CI 130","NAGOYA NGO"],
+    ["15:40","NH 852","TOKYO NRT"],
+    ["15:55","BR 388","GUANGZHOU"],
+    ["16:10","JX 754","PHUKET"],
+    ["16:25","CI 918","HONG KONG"],
+    ["16:40","KE 692","SEOUL ICN"],
+    ["16:55","BR 236","KUALA LUMPUR"],
+    ["17:10","CI 852","SHANGHAI PVG"],
+    ["17:25","IT 250","TOKYO NRT"],
+    ["17:40","JL 802","TOKYO NRT"],
+    ["17:55","BR 128","OKINAWA OKA"],
+    ["18:10","CI 710","PHNOM PENH"],
+    ["18:30","EK 367","DUBAI"],
+    ["18:45","BR 716","BANGKOK BKK"],
+    ["19:00","JX 780","MACAU"],
+    ["19:15","CI 202","TOKYO NRT"],
+    ["19:30","OZ 712","SEOUL ICN"],
+    ["19:45","BR 892","HONG KONG"],
+    ["20:00","QR 915","DOHA"],
+    ["20:20","CI 062","NEW YORK JFK"],
+    ["20:35","JX 728","HO CHI MINH"],
+    ["20:50","BR 396","SHENZHEN"],
+    ["21:05","TK 025","ISTANBUL"],
+    ["21:20","CI 176","TOKYO HND"],
+    ["21:35","IT 268","OSAKA KIX"],
+    ["21:50","BR 762","SINGAPORE"],
+    ["22:05","UA 872","SAN FRANCISCO"],
+    ["22:20","CI 838","HONG KONG"],
+    ["22:40","JX 850","SEOUL ICN"],
+    ["22:55","BR 032","LOS ANGELES"],
+    ["23:10","CI 026","SEATTLE"],
+    ["23:25","SQ 875","SINGAPORE"],
+    ["23:40","BR 606","VANCOUVER"],
+    ["23:55","JX 202","LOS ANGELES"]
+  ];
+
+  var WINDOW_MIN = 240;   // 板面只顯示現在往後四小時
+  var LINGER_MIN = 10;    // 起飛後再掛十分鐘，最上面那排才不會憑空消失
+
+  /* 台北沒有日光節約時間（1979 年就停了），所以固定 +8 是精確值，不必動用
+     Intl 或時區資料庫 — 看板機器設在哪一區，板上都是 TPE 的時間。 */
+  var TPE_OFFSET = 8 * 60;
+
+  function tpeNow(){
+    var d = new Date();
+    return new Date(d.getTime() + (d.getTimezoneOffset() + TPE_OFFSET) * 60000);
+  }
+
+  function tpeMinutes(){
+    var t = tpeNow();
+    return t.getHours() * 60 + t.getMinutes();
+  }
+
+  function hhmm(m){
+    m = ((m % 1440) + 1440) % 1440;
+    return pad2(Math.floor(m / 60)) + ":" + pad2(m % 60);
+  }
+
+  function toMin(t){ return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)); }
+
+  // 距起飛還剩幾分鐘 → 板上那一欄的字。真的機場就是這樣分段的。
+  var STATES = [
+    [  0, "DEPARTED",  "idle"  ],
+    [  5, "CLOSING",   "alert" ],
+    [ 20, "LAST CALL", "alert" ],
+    [ 45, "BOARDING",  "live"  ],
+    [ 90, "CHECK IN",  "ok"    ],
+    [999, "SCHEDULED", "idle"  ]
+  ];
+
+  function stateFor(rel){
+    for(var i = 0; i < STATES.length; i++) if(rel <= STATES[i][0]) return STATES[i];
+    return STATES[STATES.length - 1];
+  }
+
+  /* 班表是「每天」的，所以視窗要繞過午夜：23:55 那班在 00:30 看是剛起飛，
+     00:20 那班在 22:00 看是四小時後。先取 1440 的餘數，再把「剛過去」的那
+     一小段折成負值，這樣排序和分段都只是比大小。 */
+  function flightRows(){
+    var now = tpeMinutes();
+    var due = [];
+    for(var i = 0; i < TIMETABLE.length; i++){
+      var f = TIMETABLE[i];
+      var rel = (toMin(f[0]) - now + 1440) % 1440;
+      if(rel >= 1440 - LINGER_MIN) rel -= 1440;
+      if(rel > WINDOW_MIN) continue;
+      var st = stateFor(rel);
+      due.push([rel, [f[0], f[1], f[2], st[1], st[2]]]);
+    }
+    due.sort(function(a, b){ return a[0] - b[0]; });
+    return due.slice(0, ROWS).map(function(d){ return d[1]; });
+  }
+
+  function flightSub(){
+    var m = tpeMinutes();
+    return "TAOYUAN INTL · " + hhmm(m) + "-" + hhmm(m + WINDOW_MIN);
+  }
+
+  /* ---------- content channels ----------
+     rows 和 sub 可以是值，也可以是函式 — 航班頻道靠這個變成活的。 */
   var CHANNELS = {
     flights:{
       marquee:"DEPARTURES",
-      sub:"TAOYUAN INTL · TERMINAL 2",
-      rows:[
-        ["08:40","TOKYO HND","ON TIME","ok"],
-        ["09:15","SINGAPORE","BOARDING","live"],
-        ["10:05","SEOUL ICN","GATE C7","idle"],
-        ["11:30","OSAKA KIX","DELAYED","alert"],
-        ["12:00","MANILA MNL","ON TIME","ok"],
-        ["12:45","BANGKOK BKK","GATE A3","idle"],
-        ["13:10","HO CHI MINH","ON TIME","ok"],
-        ["13:55","JAKARTA CGK","CHECK IN","live"],
-        ["14:20","HONG KONG","ON TIME","ok"],
-        ["15:05","SHANGHAI PVG","BOARDING","live"]
-      ]
+      heads:["時間 Time", "班機 Flight", "目的地 Destination", "狀態 Status"],
+      sub:flightSub,
+      rows:flightRows
     },
     schedule:{
       marquee:"TODAY",
       sub:"WEDNESDAY · 26 AUGUST",
+      heads:["時間 Time", "類別 Type", "內容 Agenda", "地點 Where"],
       rows:[
-        ["08:30","STANDUP","ROOM 2","idle"],
-        ["09:00","DESIGN REVIEW","ROOM 4","idle"],
-        ["10:00","ONE ON ONE","ONLINE","idle"],
-        ["11:00","CLIENT CALL","NOW","live"],
-        ["11:45","LUNCH","CANTEEN","ok"],
-        ["13:00","SPRINT PLAN","ROOM 4","idle"],
-        ["14:00","BUILD DEMO","STUDIO","idle"],
-        ["15:00","DEEP WORK","FOCUS","ok"],
-        ["15:45","CODE REVIEW","ONLINE","idle"],
-        ["16:30","VENDOR SYNC","ROOM 1","idle"]
+        ["08:30","SYNC","STANDUP","ROOM 2","idle"],
+        ["09:00","REVIEW","DESIGN REVIEW","ROOM 4","idle"],
+        ["10:00","MEET","ONE ON ONE","ONLINE","idle"],
+        ["11:00","CALL","CLIENT CALL","NOW","live"],
+        ["11:45","BREAK","LUNCH","CANTEEN","ok"],
+        ["13:00","PLAN","SPRINT PLAN","ROOM 4","idle"],
+        ["14:00","DEMO","BUILD DEMO","STUDIO","idle"],
+        ["15:00","FOCUS","DEEP WORK","DESK","ok"],
+        ["15:45","REVIEW","CODE REVIEW","ONLINE","idle"],
+        ["16:30","SYNC","VENDOR SYNC","ROOM 1","idle"]
       ]
     },
     ops:{
       marquee:"SYSTEMS",
       sub:"PRODUCTION · AP-NORTHEAST-1",
+      heads:["數值 Value", "區間 Window", "系統 System", "狀態 State"],
       rows:[
-        ["99.98","API GATEWAY","HEALTHY","ok"],
-        ["0.12","DATABASE","DEGRADED","alert"],
-        ["04:12","LAST DEPLOY","SHIPPED","idle"],
-        ["3","OPEN TICKETS","REVIEW","live"],
-        ["128","EDGE NODES","ONLINE","ok"],
-        ["99.90","CDN","HEALTHY","ok"],
-        ["0.04","CACHE","HEALTHY","ok"],
-        ["17","BUILD QUEUE","RUNNING","live"],
-        ["99.95","AUTH SERVICE","HEALTHY","ok"],
-        ["1.80","SEARCH INDEX","SLOW","alert"]
+        ["99.98","30 DAY","API GATEWAY","HEALTHY","ok"],
+        ["0.12","P95","DATABASE","DEGRADED","alert"],
+        ["04:12","TODAY","LAST DEPLOY","SHIPPED","idle"],
+        ["3","OPEN","OPEN TICKETS","REVIEW","live"],
+        ["128","LIVE","EDGE NODES","ONLINE","ok"],
+        ["99.90","30 DAY","CDN","HEALTHY","ok"],
+        ["0.04","P95","CACHE","HEALTHY","ok"],
+        ["17","LIVE","BUILD QUEUE","RUNNING","live"],
+        ["99.95","30 DAY","AUTH SERVICE","HEALTHY","ok"],
+        ["1.80","P95","SEARCH INDEX","SLOW","alert"]
       ]
     },
     zh:{
       marquee:"翻頁看板",
       sub:"中文字元也能上板 · 混排測試",
+      heads:["時間 Time", "負責 Owner", "項目 Item", "狀態 State"],
       rows:[
-        ["週三","設計評審","進行中","live"],
-        ["10:05","第二版排程","待確認","idle"],
-        ["延誤","資料串接","尚未接","alert"],
-        ["完成","第一版骨架","已交付","ok"],
-        ["14:00","全螢幕模式","已完成","ok"],
-        ["15:30","中文字元","正常","ok"],
-        ["16:00","效能量測","已完成","ok"],
-        ["17:00","翻頁聲調校","待回饋","live"],
-        ["週四","欄位確認","等回覆","live"],
-        ["09:00","資料來源","未定","idle"]
+        ["週三","設計","設計評審","進行中","live"],
+        ["10:05","前端","第二版排程","待確認","idle"],
+        ["延誤","後端","資料串接","尚未接","alert"],
+        ["完成","前端","第一版骨架","已交付","ok"],
+        ["14:00","前端","全螢幕模式","已完成","ok"],
+        ["15:30","測試","中文字元","正常","ok"],
+        ["16:00","維運","效能量測","已完成","ok"],
+        ["17:00","設計","翻頁聲調校","待回饋","live"],
+        ["週四","後端","欄位確認","等回覆","live"],
+        ["09:00","文件","資料來源","未定","idle"]
       ]
     }
   };
@@ -902,9 +1052,9 @@ body.fs .fshint.show{ opacity:1; }
   function pad2(x){ return String(x).length < 2 ? "0" + x : String(x); }
 
   function stampNow(){
-    var d = new Date();
+    var t = tpeNow();
     document.getElementById("stamp").textContent =
-      "LAST FLIP " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+      "LAST FLIP " + pad2(t.getHours()) + ":" + pad2(t.getMinutes()) + ":" + pad2(t.getSeconds());
   }
 
   function clearChannelState(){
@@ -912,40 +1062,79 @@ body.fs .fshint.show{ opacity:1; }
     for(var i = 0; i < btns.length; i++) btns[i].setAttribute("aria-pressed", "false");
   }
 
+  function valueOf(v){ return typeof v === "function" ? v() : v; }
+
+  /* Rows depart one after another rather than all at once. A real board reads
+     top-down like this, and it keeps far fewer flaps in flight at any instant.
+     One row per beat, top to bottom; within a row the columns share a single
+     continuous sweep — offset by the widths already passed — so a row departs
+     as one gesture instead of as four separate columns. */
+  function writeRows(data){
+    var s = BEAT * 0.045;
+    var jit = BEAT * 0.3;
+    rows.forEach(function(row){
+      var r = data[row.slot] || BLANK;
+      var base = BEAT * (2 + row.slot);
+      var off = 0;
+      for(var c = 0; c < COLS.length; c++){
+        row.lines[COLS[c].key].write(r[c], { stagger:s, jitter:jit, base:base + off * s });
+        off += COLS[c].n;
+      }
+      row.lamp.className = "lamp " + (r[COLS.length] || "idle");
+    });
+  }
+
+  var curChan = "";
+  var lastFlights = "";
+
   function show(key){
     var ch = CHANNELS[key];
     if(!ch) return;
-    // Rows depart one after another rather than all at once. A real board reads
-    // top-down like this, and it keeps far fewer flaps in flight at any instant.
-    // One row per beat, top to bottom. Within a row the three columns share a
-    // single continuous sweep, so a row departs as one gesture rather than as
-    // three separate columns — that is what makes it read row-by-row.
-    var s = BEAT * 0.045;
-    var jit = BEAT * 0.3;
+    curChan = key;
 
-    marquee.write(ch.marquee, { center:true, stagger:BEAT * 0.3, jitter:jit });
-    subline.write(ch.sub, { center:true, stagger:BEAT * 0.12, jitter:jit, base:BEAT });
+    var heads = ch.heads;
+    for(var h = 0; h < headEls.length; h++) headEls[h].textContent = heads[h];
 
-    // The board sweeps top-down, one row per beat.
-    rows.forEach(function(row, i){
-      var r = ch.rows[i];
-      if(!r) r = ["", "", "", "idle"];
-      var base = BEAT * (2 + row.slot);
-      row.lines.time.write(r[0],   { stagger:s, jitter:jit, base:base });
-      row.lines.body.write(r[1],   { stagger:s, jitter:jit, base:base + 5 * s });
-      row.lines.status.write(r[2], { stagger:s, jitter:jit, base:base + 18 * s });
-      row.lamp.className = "lamp " + r[3];
-    });
+    marquee.write(ch.marquee, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
+    subline.write(valueOf(ch.sub), { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
+
+    var data = valueOf(ch.rows);
+    lastFlights = key === "flights" ? JSON.stringify(data) : "";
+    writeRows(data);
+
     clearChannelState();
     var btn = document.querySelector('.chan[data-ch="' + key + '"]');
     if(btn) btn.setAttribute("aria-pressed", "true");
     stampNow();
   }
 
-  /* ---------- clock ---------- */
+  /* ---------- the flights channel follows the clock ----------
+     Re-derived on every minute boundary, but only written when the answer
+     actually changed. Between departures that is a string compare and nothing
+     else — no DOM reads, no writes, and the board stays genuinely idle. */
+  function refreshFlights(){
+    if(curChan !== "flights") return;
+    var data = flightRows();
+    var key = JSON.stringify(data);
+    if(key === lastFlights) return;
+    lastFlights = key;
+    subline.write(flightSub(), { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
+    writeRows(data);
+    stampNow();
+  }
+
+  /* ---------- clock ----------
+     The board runs on TPE time, so the minute the clock rolls over is exactly
+     when a flight can change state — refresh off that instead of polling. */
+  var lastMin = -1;
   function tickClock(){
-    var d = new Date();
-    clock.write(pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()), { stagger:0, jitter:0 });
+    var t = tpeNow();
+    clock.write(pad2(t.getHours()) + ":" + pad2(t.getMinutes()) + ":" + pad2(t.getSeconds()), { stagger:0, jitter:0 });
+    var m = t.getHours() * 60 + t.getMinutes();
+    if(m !== lastMin){
+      lastMin = m;
+      refreshFlights();
+    }
   }
   tickClock();
   setInterval(tickClock, 1000);
