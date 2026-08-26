@@ -149,17 +149,11 @@ body{
 
 /* ─────────  G R I D  ───────── */
 
-.gridscroll{ width:100%; overflow:hidden; display:flex; justify-content:center; }
+/* flex:none matters — overflow:hidden gives a flex item an automatic minimum
+   size of zero, so without it the stage would shrink this box and silently clip
+   rows instead of letting fit() measure the overflow and scale --u down. */
+.gridscroll{ width:100%; overflow:hidden; display:flex; justify-content:center; flex:none; }
 
-.blocks{
-  display:flex; width:max-content; margin:0 auto;
-  gap:clamp(18px,2.6vw,44px);
-  align-items:flex-start;
-}
-.blocks > .board-grid:last-child{
-  padding-left:clamp(18px,2.6vw,44px);
-  border-left:1px solid var(--rail-soft);
-}
 .board-grid{
   width:max-content;
   display:grid;
@@ -410,10 +404,7 @@ body.fs .fshint.show{ opacity:1; }
     <div class="divider"></div>
 
     <div class="gridscroll">
-      <div class="blocks">
-        <div class="board-grid" id="gridA"></div>
-        <div class="board-grid" id="gridB"></div>
-      </div>
+      <div class="board-grid" id="grid"></div>
     </div>
   </div>
 
@@ -467,7 +458,7 @@ body.fs .fshint.show{ opacity:1; }
 <div class="fshint" id="fshint">Esc 離開 · 1–4 切頻道 · Space 輪播</div>
 
 <p class="note">
-  2 區 × 8 行 = 16 筆 · <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
+  10 行 · <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
 
@@ -556,7 +547,7 @@ body.fs .fshint.show{ opacity:1; }
      few milliseconds of bright edge tick for the plastic.
 
      It is also on a beat instead of one-per-flap: a full board update
-     is ~1500 individual flaps, and honestly reproducing that is a roar
+     is ~1000 individual flaps, and honestly reproducing that is a roar
      no matter how good each sample is. One clack per BEAT, weighted by
      how many flaps moved in that window, gives a countable mechanical
      tick that gets fuller when the board is busy.
@@ -794,8 +785,7 @@ body.fs .fshint.show{ opacity:1; }
     { key:"body",   n:13, head:"內容 Destination", drum:DRUM },
     { key:"status", n:8,  head:"狀態 Status",      drum:DRUM }
   ];
-  var PER_BLOCK = 8;                       // rows in each of the two blocks
-  var BLOCKS = ["gridA", "gridB"];
+  var ROWS = 10;                           // rows on the board
 
   function div(cls, text){
     var d = document.createElement("div");
@@ -804,22 +794,22 @@ body.fs .fshint.show{ opacity:1; }
     return d;
   }
 
-  // rows[] is flat and 16 long; row.slot is its position within its block, which
-  // is what the cascade beats on so both blocks sweep top-down together.
+  // rows[] is 10 long and row.slot is its position on the board, which is what
+  // the cascade beats on so the board sweeps top-down.
   var rows = [];
-  BLOCKS.forEach(function(id, b){
-    var grid = document.getElementById(id);
+  (function(){
+    var grid = document.getElementById("grid");
     grid.appendChild(div("colhead", ""));
     COLS.forEach(function(c){ grid.appendChild(div("colhead", c.head)); });
 
-    for(var r = 0; r < PER_BLOCK; r++){
+    for(var r = 0; r < ROWS; r++){
       var lampCell = div("rowlamp");
       var lamp = document.createElement("span");
       lamp.className = "lamp idle";
       lampCell.appendChild(lamp);
       grid.appendChild(lampCell);
 
-      var rowObj = { lamp: lamp, lines: {}, slot: r, block: b };
+      var rowObj = { lamp: lamp, lines: {}, slot: r };
       for(var c = 0; c < COLS.length; c++){
         var host = div("line");
         grid.appendChild(host);
@@ -827,7 +817,7 @@ body.fs .fshint.show{ opacity:1; }
       }
       rows.push(rowObj);
     }
-  });
+  })();
 
   var marquee = new Line(14, "lg", document.getElementById("marquee"));
   var subline = new Line(28, "sm", document.getElementById("subline"));
@@ -848,13 +838,7 @@ body.fs .fshint.show{ opacity:1; }
         ["13:10","HO CHI MINH","ON TIME","ok"],
         ["13:55","JAKARTA CGK","CHECK IN","live"],
         ["14:20","HONG KONG","ON TIME","ok"],
-        ["15:05","SHANGHAI PVG","BOARDING","live"],
-        ["15:40","KUALA LUMPUR","GATE B9","idle"],
-        ["16:15","SYDNEY SYD","DELAYED","alert"],
-        ["17:00","LOS ANGELES","ON TIME","ok"],
-        ["17:30","VANCOUVER","GATE D1","idle"],
-        ["18:05","FRANKFURT","ON TIME","ok"],
-        ["18:50","AMSTERDAM","CHECK IN","live"]
+        ["15:05","SHANGHAI PVG","BOARDING","live"]
       ]
     },
     schedule:{
@@ -870,13 +854,7 @@ body.fs .fshint.show{ opacity:1; }
         ["14:00","BUILD DEMO","STUDIO","idle"],
         ["15:00","DEEP WORK","FOCUS","ok"],
         ["15:45","CODE REVIEW","ONLINE","idle"],
-        ["16:30","VENDOR SYNC","ROOM 1","idle"],
-        ["17:00","RETRO","ROOM 4","idle"],
-        ["17:45","TRAINING","OPTIONAL","ok"],
-        ["18:30","COMMUTE","CLEAR","ok"],
-        ["19:15","DINNER","HOME","ok"],
-        ["20:00","READING","HOME","ok"],
-        ["21:30","SHUTDOWN","DONE","idle"]
+        ["16:30","VENDOR SYNC","ROOM 1","idle"]
       ]
     },
     ops:{
@@ -892,13 +870,7 @@ body.fs .fshint.show{ opacity:1; }
         ["0.04","CACHE","HEALTHY","ok"],
         ["17","BUILD QUEUE","RUNNING","live"],
         ["99.95","AUTH SERVICE","HEALTHY","ok"],
-        ["1.80","SEARCH INDEX","SLOW","alert"],
-        ["06:40","NIGHTLY JOB","DONE","idle"],
-        ["0","ALERTS","CLEAR","ok"],
-        ["64","WORKERS","ONLINE","ok"],
-        ["99.99","OBJECT STORE","HEALTHY","ok"],
-        ["0.09","QUEUE LAG","HEALTHY","ok"],
-        ["2","PENDING PRS","REVIEW","live"]
+        ["1.80","SEARCH INDEX","SLOW","alert"]
       ]
     },
     zh:{
@@ -914,13 +886,7 @@ body.fs .fshint.show{ opacity:1; }
         ["16:00","效能量測","已完成","ok"],
         ["17:00","翻頁聲調校","待回饋","live"],
         ["週四","欄位確認","等回覆","live"],
-        ["09:00","資料來源","未定","idle"],
-        ["11:00","版面定稿","未定","idle"],
-        ["13:00","上線演練","未排","idle"],
-        ["週五","正式部署","未排","idle"],
-        ["備援","備援方案","未寫","alert"],
-        ["監控","監控告警","未接","alert"],
-        ["文件","交接文件","未寫","alert"]
+        ["09:00","資料來源","未定","idle"]
       ]
     }
   };
@@ -952,13 +918,11 @@ body.fs .fshint.show{ opacity:1; }
     marquee.write(ch.marquee, { center:true, stagger:BEAT * 0.3, jitter:jit });
     subline.write(ch.sub, { center:true, stagger:BEAT * 0.12, jitter:jit, base:BEAT });
 
-    // Both blocks sweep top-down together, one row per beat. The right block
-    // trails by a third of a beat so the two halves don't move in lockstep —
-    // it reads better and halves how many flaps are in flight at any instant.
+    // The board sweeps top-down, one row per beat.
     rows.forEach(function(row, i){
       var r = ch.rows[i];
       if(!r) r = ["", "", "", "idle"];
-      var base = BEAT * (2 + row.slot) + (row.block ? BEAT * 0.34 : 0);
+      var base = BEAT * (2 + row.slot);
       row.lines.time.write(r[0],   { stagger:s, jitter:jit, base:base });
       row.lines.body.write(r[1],   { stagger:s, jitter:jit, base:base + 5 * s });
       row.lines.status.write(r[2], { stagger:s, jitter:jit, base:base + 18 * s });
@@ -1125,7 +1089,7 @@ body.fs .fshint.show{ opacity:1; }
      runs on load / resize / entering wall mode — never per frame. */
   var stageEl = document.querySelector(".stage");
   var scrollEl = document.querySelector(".gridscroll");
-  var blocksEl = document.querySelector(".blocks");
+  var gridEl = document.getElementById("grid");
   var marqEl = document.getElementById("marquee");
   var U_MIN = 6, U_MAX = 48;
   var curU = 19;
@@ -1163,7 +1127,7 @@ body.fs .fshint.show{ opacity:1; }
       var availH = stageEl.clientHeight;
       var availW = scrollEl.clientWidth;
       var usedH = stageUsed();
-      var usedW = Math.max(blocksEl.getBoundingClientRect().width,
+      var usedW = Math.max(gridEl.getBoundingClientRect().width,
                            marqEl.getBoundingClientRect().width);
 
       if(!availH || !availW || !usedH || !usedW) return;
