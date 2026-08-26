@@ -257,6 +257,24 @@ body{
   width:100%; margin-bottom:-6px;
 }
 
+.chan{
+  font-family:var(--f-sign); font-size:12px; font-weight:500; letter-spacing:.05em;
+  color:var(--ink-dim);
+  background:linear-gradient(180deg,#212328,#16181B);
+  border:1px solid var(--rail);
+  border-radius:4px;
+  padding:9px 18px;
+  cursor:pointer;
+  transition:color .16s,border-color .16s,transform .08s;
+}
+.chan:hover{ color:var(--ink); border-color:rgba(240,234,219,.22); }
+.chan:active{ transform:translateY(1px); }
+.chan[aria-pressed="true"]{
+  color:var(--ink);
+  border-color:var(--amber-deep);
+  box-shadow:inset 0 0 0 1px rgba(232,161,60,.18),0 0 14px -6px rgba(232,161,60,.6);
+}
+
 .field{ display:flex; gap:8px; flex:1 1 340px; min-width:0; }
 input[type="text"]{
   flex:1 1 auto; min-width:0;
@@ -406,6 +424,11 @@ body.fs .fshint.show{ opacity:1; }
 </div>
 
 <div class="deck">
+  <div class="deck-row">
+    <button class="chan" aria-pressed="true">出發 Departures</button>
+    <button class="chan" aria-pressed="false">抵達 Arrivals</button>
+  </div>
+
   <div class="deck-row grow">
     <div class="field">
       <input type="text" id="msg" maxlength="14" placeholder="打字上板 — 最多 14 字，留空 Enter 還原">
@@ -437,11 +460,11 @@ body.fs .fshint.show{ opacity:1; }
   </div>
 </div>
 
-<div class="fshint" id="fshint">Esc 離開 · Space 下一頁</div>
+<div class="fshint" id="fshint">Esc 離開 · 1 出發 / 2 抵達 · Space 下一頁</div>
 
 <p class="note">
-  TPE 出境 · 台北時間前 1 小時到後 4 小時，每 25 秒翻下一頁，翻完回到最前面 ·
-  <b>F</b> 全螢幕 · <b>Space</b> 下一頁 ·
+  出發／抵達兩面板 · 台北時間前 1 小時到後 4 小時，每 25 秒翻下一頁，翻完回到最前面 ·
+  <b>1</b>／<b>2</b> 換面板 · <b>F</b> 全螢幕 · <b>Space</b> 下一頁 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
 
@@ -782,12 +805,17 @@ body.fs .fshint.show{ opacity:1; }
   // rows[] is 10 long and row.slot is its position on the board, which is what
   // the cascade beats on so the board sweeps top-down.
   var rows = [];
+  var headEls = [];
   (function(){
     var grid = document.getElementById("grid");
     // one column for the lamp, then one per COLS entry
     grid.style.gridTemplateColumns = "repeat(" + (COLS.length + 1) + ",auto)";
     grid.appendChild(div("colhead", ""));
-    COLS.forEach(function(c){ grid.appendChild(div("colhead", c.head)); });
+    COLS.forEach(function(c){
+      var h = div("colhead", c.head);
+      headEls.push(h);                       // 目的地那欄的標題要跟著面板換
+      grid.appendChild(h);
+    });
 
     for(var r = 0; r < ROWS; r++){
       var lampCell = div("rowlamp");
@@ -811,13 +839,13 @@ body.fs .fshint.show{ opacity:1; }
   var clock = new Line(8, "sm", document.getElementById("clock"), NUMS);
 
   /* ---------- TPE 班表 ----------
-     看板只把「現在往後四小時」那一段畫出來。每筆是 [起飛時間, 班機, 目的地]，
-     台北時間，照時刻排序。
+     兩面板共用同一套規則，只是一個看起飛、一個看抵達。每筆是
+     [時間, 班機, 目的地或來自]，台北時間，照時刻排序。
 
-     這張是內建的示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號
+     這兩張是內建的示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號
      與時刻不是官方公告的班表，別拿它趕飛機。接上 data/timetable.json 之後（見
-     下面的 loadTimetable 和 README）就會被官方資料換掉，這張只留著當退路。 */
-  var TIMETABLE = [
+     下面的 loadTimetable 和 README）就會被官方資料換掉，這兩張只留著當退路。 */
+  var DEP_TABLE = [
     ["00:20","BR 067","VIENNA"],
     ["00:55","CI 073","LONDON LHR"],
     ["01:30","BR 087","AMSTERDAM"],
@@ -894,6 +922,82 @@ body.fs .fshint.show{ opacity:1; }
     ["23:55","JX 202","LOS ANGELES"]
   ];
 
+  var ARR_TABLE = [
+    ["04:45","BR 031","LOS ANGELES"],
+    ["05:10","CI 021","LOS ANGELES"],
+    ["05:35","UA 871","SAN FRANCISCO"],
+    ["05:55","BR 605","VANCOUVER"],
+    ["06:15","CI 061","NEW YORK JFK"],
+    ["06:35","JX 201","LOS ANGELES"],
+    ["06:50","BR 061","VIENNA"],
+    ["07:05","CI 071","LONDON LHR"],
+    ["07:20","EK 366","DUBAI"],
+    ["07:40","QR 914","DOHA"],
+    ["07:55","TK 024","ISTANBUL"],
+    ["08:10","CX 464","HONG KONG"],
+    ["08:25","IT 611","MACAU"],
+    ["08:40","BR 801","HONG KONG"],
+    ["08:55","CI 582","XIAMEN"],
+    ["09:10","JX 801","TOKYO NRT"],
+    ["09:25","NH 851","TOKYO NRT"],
+    ["09:40","CI 151","TOKYO NRT"],
+    ["09:55","BR 171","SEOUL ICN"],
+    ["10:10","KE 691","SEOUL ICN"],
+    ["10:25","JL 801","TOKYO NRT"],
+    ["10:40","CI 101","TOKYO HND"],
+    ["10:55","BR 107","TOKYO HND"],
+    ["11:10","IT 201","NAGOYA NGO"],
+    ["11:25","SQ 878","SINGAPORE"],
+    ["11:40","BR 225","SINGAPORE"],
+    ["11:55","TG 634","BANGKOK BKK"],
+    ["12:10","CI 829","HONG KONG"],
+    ["12:25","JX 719","MANILA MNL"],
+    ["12:40","PR 896","MANILA MNL"],
+    ["12:55","BR 131","FUKUOKA FUK"],
+    ["13:10","CI 115","OSAKA KIX"],
+    ["13:25","IT 281","OSAKA KIX"],
+    ["13:40","MH 366","KUALA LUMPUR"],
+    ["13:55","VN 576","HO CHI MINH"],
+    ["14:15","BR 255","BANGKOK BKK"],
+    ["14:30","JX 739","SINGAPORE"],
+    ["14:45","CI 659","HO CHI MINH"],
+    ["15:00","BR 871","SHANGHAI PVG"],
+    ["15:15","CI 501","HONG KONG"],
+    ["15:30","IT 235","SAPPORO CTS"],
+    ["15:45","JX 825","FUKUOKA FUK"],
+    ["16:00","BR 191","SEOUL ICN"],
+    ["16:15","CI 619","HANOI HAN"],
+    ["16:30","CX 466","HONG KONG"],
+    ["16:45","BR 211","JAKARTA CGK"],
+    ["17:00","JX 809","TOKYO HND"],
+    ["17:15","CI 129","NAGOYA NGO"],
+    ["17:30","BR 387","GUANGZHOU"],
+    ["17:45","IT 703","DA NANG"],
+    ["18:00","CI 917","HONG KONG"],
+    ["18:15","JX 753","PHUKET"],
+    ["18:30","BR 235","KUALA LUMPUR"],
+    ["18:45","CI 851","SHANGHAI PVG"],
+    ["19:00","OZ 711","SEOUL ICN"],
+    ["19:15","BR 127","OKINAWA OKA"],
+    ["19:30","JX 779","MACAU"],
+    ["19:45","CI 709","PHNOM PENH"],
+    ["20:00","BR 715","BANGKOK BKK"],
+    ["20:20","CI 201","TOKYO NRT"],
+    ["20:35","JX 727","HO CHI MINH"],
+    ["20:50","BR 891","HONG KONG"],
+    ["21:05","CI 175","TOKYO HND"],
+    ["21:20","IT 267","OSAKA KIX"],
+    ["21:35","BR 761","SINGAPORE"],
+    ["21:50","SQ 874","SINGAPORE"],
+    ["22:05","CI 837","HONG KONG"],
+    ["22:20","JX 849","SEOUL ICN"],
+    ["22:40","BR 395","SHENZHEN"],
+    ["22:55","CI 853","SHANGHAI PVG"],
+    ["23:10","BR 117","TOKYO NRT"],
+    ["23:25","JX 819","OSAKA KIX"],
+    ["23:45","CI 165","TOKYO NRT"]
+  ];
+
   var BACK_MIN = 60;        // 往前一小時：剛走掉的班次還留在板上
   var WINDOW_MIN = 240;     // 往後四小時
   var PAGE_EVERY = 25000;   // 每 25 秒翻下一頁，翻完回到最前面
@@ -919,8 +1023,10 @@ body.fs .fshint.show{ opacity:1; }
 
   function toMin(t){ return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)); }
 
-  // 距起飛還剩幾分鐘 → 板上那一欄的字。真的機場就是這樣分段的。
-  var STATES = [
+  /* 距離起飛（或落地）還剩幾分鐘 → 板上那一欄的字。門檻由小到大，取第一個
+     rel <= 門檻 的。兩面板規則一樣，只有用語不一樣 —— 抵達的班機不會 CHECK IN，
+     也不會 LAST CALL；反過來出發的班機也不會 AT GATE。 */
+  var DEP_STATES = [
     [  0, "DEPARTED",  "idle"  ],
     [  5, "CLOSING",   "alert" ],
     [ 20, "LAST CALL", "alert" ],
@@ -929,23 +1035,42 @@ body.fs .fshint.show{ opacity:1; }
     [999, "SCHEDULED", "idle"  ]
   ];
 
-  function stateFor(rel){
-    for(var i = 0; i < STATES.length; i++) if(rel <= STATES[i][0]) return STATES[i];
-    return STATES[STATES.length - 1];
+  var ARR_STATES = [
+    [-20, "AT GATE",   "idle" ],   // 落地二十分鐘後，人早就下機了
+    [  0, "LANDED",    "ok"   ],
+    [ 20, "LANDING",   "live" ],
+    [ 45, "INBOUND",   "live" ],
+    [ 90, "EN ROUTE",  "ok"   ],
+    [999, "SCHEDULED", "idle" ]
+  ];
+
+  /* ---------- 兩面板 ----------
+     出發和抵達除了資料和用語之外完全一樣：同樣的視窗、同樣的分段方式、同樣的
+     翻頁輪播。頁碼各記各的，切過去接著自己的進度。 */
+  var BOARDS = [
+    { id:"dep", tab:"出發", marquee:"DEPARTURES", head:"目的地 Destination",
+      table:DEP_TABLE, states:DEP_STATES, page:0 },
+    { id:"arr", tab:"抵達", marquee:"ARRIVALS",   head:"來自 From",
+      table:ARR_TABLE, states:ARR_STATES, page:0 }
+  ];
+
+  function stateFor(states, rel){
+    for(var i = 0; i < states.length; i++) if(rel <= states[i][0]) return states[i];
+    return states[states.length - 1];
   }
 
   /* 班表是「每天」的，所以視窗要繞過午夜：23:55 那班在 00:30 看是剛起飛，
      00:20 那班在 22:00 看是四小時後。先取 1440 的餘數，再把「前一小時」那一段
      折成負值，這樣排序和分段都只是比大小。 */
-  function flightList(){
+  function flightList(b){
     var now = tpeMinutes();
     var due = [];
-    for(var i = 0; i < TIMETABLE.length; i++){
-      var f = TIMETABLE[i];
+    for(var i = 0; i < b.table.length; i++){
+      var f = b.table[i];
       var rel = (toMin(f[0]) - now + 1440) % 1440;
       if(rel >= 1440 - BACK_MIN) rel -= 1440;
       if(rel > WINDOW_MIN) continue;
-      var st = stateFor(rel);
+      var st = stateFor(b.states, rel);
       due.push([rel, [f[0], f[1], f[2], st[1], st[2]]]);
     }
     due.sort(function(a, b){ return a[0] - b[0]; });
@@ -955,13 +1080,13 @@ body.fs .fshint.show{ opacity:1; }
   /* 視窗裝得下的班次通常不只十班，所以切頁輪播 —— 一頁十行，翻到最後一頁就回
      到第一頁（也就是前一小時那頁），一直繞。班次會隨時間掉出視窗，頁數跟著變，
      所以頁碼每次都要收斂回實際範圍，不能讓它一直加上去。 */
-  function flightPage(n){
-    var list = flightList();
+  function flightPage(b){
+    var list = flightList(b);
     var pages = Math.max(1, Math.ceil(list.length / ROWS));
-    var p = ((n % pages) + pages) % pages;
+    var p = ((b.page % pages) + pages) % pages;
+    b.page = p;
     var now = tpeMinutes();
     return {
-      page: p,
       pages: pages,
       rows: list.slice(p * ROWS, p * ROWS + ROWS),
       label: "TPE " + hhmm(now - BACK_MIN) + "-" + hhmm(now + WINDOW_MIN) +
@@ -983,14 +1108,14 @@ body.fs .fshint.show{ opacity:1; }
     fetch(FEED + "?t=" + Math.floor(Date.now() / 60000), { cache:"no-store" })
       .then(function(res){ return res.ok ? res.json() : null; })
       .then(function(data){
-        if(!data || !data.rows || data.rows.length < 5) return;
-        TIMETABLE = data.rows;
+        if(!data) return;
+        var dep = data.departures || data.rows;    // rows 是還沒分出發抵達前的名字
+        if(dep && dep.length >= 5) BOARDS[0].table = dep;
+        if(data.arrivals && data.arrivals.length >= 5) BOARDS[1].table = data.arrivals;
         paintFlights();            // 換完馬上對一次，沒變就什麼都不會動
       })
       .catch(function(){});
   }
-
-  var MARQUEE = "DEPARTURES";
 
   function pad2(x){ return String(x).length < 2 ? "0" + x : String(x); }
 
@@ -1024,13 +1149,12 @@ body.fs .fshint.show{ opacity:1; }
      每 25 秒翻一頁，每整分重算一次狀態，班表換了也重畫一次 —— 全部走這裡。
      算出來跟板上一樣就什麼都不做：只有一頁的深夜時段，這裡每 25 秒只是一次字串
      比對，沒有 DOM 讀寫，看板本體完全不動。 */
-  var page = 0;
+  var board = BOARDS[0];
   var lastPaint = "";
 
   function paintFlights(){
-    var view = flightPage(page);
-    page = view.page;                        // 班次變少時把頁碼收回實際範圍
-    var key = JSON.stringify(view.rows) + "|" + view.label;
+    var view = flightPage(board);
+    var key = board.id + "|" + JSON.stringify(view.rows) + "|" + view.label;
     if(key === lastPaint) return;
     lastPaint = key;
     subline.write(view.label, { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
@@ -1039,12 +1163,19 @@ body.fs .fshint.show{ opacity:1; }
   }
 
   function nextPage(){
-    page++;
+    board.page++;
     paintFlights();
   }
 
-  function showBoard(){
-    marquee.write(MARQUEE, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
+  // 整面換過去：大字列、那一欄的標題，還有板面本身
+  function showBoard(b){
+    if(b) board = b;
+    marquee.write(board.marquee, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
+    headEls[2].textContent = board.head;
+    var tabs = document.querySelectorAll(".chan");
+    for(var i = 0; i < tabs.length; i++){
+      tabs[i].setAttribute("aria-pressed", String(BOARDS[i] === board));
+    }
     lastPaint = "";
     paintFlights();
   }
@@ -1066,12 +1197,20 @@ body.fs .fshint.show{ opacity:1; }
   setInterval(tickClock, 1000);
 
   /* ---------- controls ---------- */
+  var tabs = document.querySelectorAll(".chan");
+  for(var t = 0; t < tabs.length; t++){
+    tabs[t].addEventListener("click", function(){
+      initAudio();
+      showBoard(BOARDS[Array.prototype.indexOf.call(tabs, this)]);
+    });
+  }
+
   var msg = document.getElementById("msg");
   function sendMsg(){
     var v = msg.value.trim();
     initAudio();
     // 沒有頻道可以切回來了，所以留空送出就是還原成班表
-    if(!v){ showBoard(); return; }
+    if(!v){ showBoard(); return; }   // 留空送出＝還原成班表
     if(!/[^\x00-\x7F]/.test(v)) v = v.toUpperCase();
     marquee.write(v, { center:true, stagger:24, jitter:120 });
     subline.write("CUSTOM MESSAGE", { center:true, stagger:10, jitter:150 });
@@ -1171,7 +1310,8 @@ body.fs .fshint.show{ opacity:1; }
 
     if(e.key === "Escape" && wall){ exitWall(); return; }
     if(e.key === "f" || e.key === "F"){ wall ? exitWall() : enterWall(); return; }
-    if(e.key === " "){ e.preventDefault(); initAudio(); nextPage(); }
+    if(e.key === " "){ e.preventDefault(); initAudio(); nextPage(); return; }
+    if(e.key === "1" || e.key === "2"){ initAudio(); showBoard(BOARDS[Number(e.key) - 1]); }
   });
 
   /* ---------- fit the board to whatever space is left ----------
@@ -1260,7 +1400,7 @@ body.fs .fshint.show{ opacity:1; }
   setInterval(loadTimetable, FEED_EVERY);
   fit();
   requestAnimationFrame(fit);
-  setTimeout(function(){ showBoard(); fit(); }, 400);
+  setTimeout(function(){ showBoard(BOARDS[0]); fit(); }, 400);
   setInterval(nextPage, PAGE_EVERY);
   setTimeout(fit, 1200);            // once webfonts have settled
 })();

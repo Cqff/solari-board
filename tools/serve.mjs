@@ -31,11 +31,11 @@ const clock = () => new Date().toTimeString().slice(0, 8);
 
 async function refresh(){
   try{
-    const rows = await fetchTimetable(SRC);
-    const changed = await writeTimetable(rows);
-    console.log(changed
-      ? `[${clock()}] 班表更新：${rows.length} 筆，${rows[0][0]} – ${rows[rows.length - 1][0]}`
-      : `[${clock()}] 班表沒變（${rows.length} 筆）`);
+    const table = await fetchTimetable(SRC);
+    const changed = await writeTimetable(table);
+    const tally = `出發 ${table.departures.length} 筆、抵達 ${table.arrivals.length} 筆`;
+    console.log(changed ? `[${clock()}] 班表更新：${tally}`
+                        : `[${clock()}] 班表沒變（${tally}）`);
   }catch(err){
     // 抓不到就留著上一版 —— 看板寧可顯示舊班表也不要開天窗
     console.warn(`[${clock()}] ${err.message}` +
