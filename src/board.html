@@ -833,13 +833,13 @@ body.fs .fshint.show{ opacity:1; }
   var subline = new Line(28, "sm", document.getElementById("subline"));
   var clock = new Line(8, "sm", document.getElementById("clock"), NUMS);
 
-  /* ---------- TPE 每日班表 ----------
-     天天都是這張表，看板只把「現在往後四小時」那一段畫出來。
+  /* ---------- TPE 班表 ----------
+     看板只把「現在往後四小時」那一段畫出來。每筆是 [起飛時間, 班機, 目的地]，
+     台北時間，照時刻排序。
 
-     這是示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號與時刻
-     不是官方公告的班表，別拿它趕飛機。要換成真的，見 README「換成真的班表」。
-
-     每筆是 [起飛時間, 班機, 目的地]，時間是台北時間，照時刻排序。 */
+     這張是內建的示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號
+     與時刻不是官方公告的班表，別拿它趕飛機。接上 data/timetable.json 之後（見
+     下面的 loadTimetable 和 README）就會被官方資料換掉，這張只留著當退路。 */
   var TIMETABLE = [
     ["00:20","BR 067","VIENNA"],
     ["00:55","CI 073","LONDON LHR"],
@@ -977,6 +977,27 @@ body.fs .fshint.show{ opacity:1; }
   function flightSub(){
     var m = tpeMinutes();
     return "TAOYUAN INTL · " + hhmm(m) + "-" + hhmm(m + WINDOW_MIN);
+  }
+
+  /* ---------- 班表資料檔 ----------
+     data/timetable.json 是 .github/workflows/timetable.yml 每 10 分鐘從桃園機場
+     的即時航班開放資料產生的。抓得到就用它，抓不到（用 file:// 開、還沒接上那支
+     workflow、對方掛了）就留著上面那張示範班表 — 看板不會因此開天窗。
+
+     掛在牆上的看板不會有人去按重新整理，所以這裡自己定期回頭抓。 */
+  var FEED = "data/timetable.json";
+  var FEED_EVERY = 5 * 60 * 1000;
+
+  function loadTimetable(){
+    if(!window.fetch) return;
+    fetch(FEED + "?t=" + Math.floor(Date.now() / 60000), { cache:"no-store" })
+      .then(function(res){ return res.ok ? res.json() : null; })
+      .then(function(data){
+        if(!data || !data.rows || data.rows.length < 5) return;
+        TIMETABLE = data.rows;
+        refreshFlights();          // 換完馬上對一次，沒變就什麼都不會動
+      })
+      .catch(function(){});
   }
 
   /* ---------- content channels ----------
@@ -1354,6 +1375,8 @@ body.fs .fshint.show{ opacity:1; }
   }
 
   /* ---------- opening sequence ---------- */
+  loadTimetable();
+  setInterval(loadTimetable, FEED_EVERY);
   fit();
   requestAnimationFrame(fit);
   setTimeout(function(){ show("flights"); fit(); }, 400);
