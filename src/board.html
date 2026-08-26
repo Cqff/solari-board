@@ -250,24 +250,6 @@ body{
   width:100%; margin-bottom:-6px;
 }
 
-.chan{
-  font-family:var(--f-sign); font-size:12px; font-weight:500; letter-spacing:.05em;
-  color:var(--ink-dim);
-  background:linear-gradient(180deg,#212328,#16181B);
-  border:1px solid var(--rail);
-  border-radius:4px;
-  padding:9px 14px;
-  cursor:pointer;
-  transition:color .16s,border-color .16s,transform .08s;
-}
-.chan:hover{ color:var(--ink); border-color:rgba(240,234,219,.22); }
-.chan:active{ transform:translateY(1px); }
-.chan[aria-pressed="true"]{
-  color:var(--ink);
-  border-color:var(--amber-deep);
-  box-shadow:inset 0 0 0 1px rgba(232,161,60,.18),0 0 14px -6px rgba(232,161,60,.6);
-}
-
 .field{ display:flex; gap:8px; flex:1 1 340px; min-width:0; }
 input[type="text"]{
   flex:1 1 auto; min-width:0;
@@ -416,16 +398,9 @@ body.fs .fshint.show{ opacity:1; }
 </div>
 
 <div class="deck">
-  <div class="deck-row">
-    <button class="chan" data-ch="flights" aria-pressed="true">航班</button>
-    <button class="chan" data-ch="schedule" aria-pressed="false">行程</button>
-    <button class="chan" data-ch="ops" aria-pressed="false">系統</button>
-    <button class="chan" data-ch="zh" aria-pressed="false">中文</button>
-  </div>
-
   <div class="deck-row grow">
     <div class="field">
-      <input type="text" id="msg" maxlength="14" placeholder="打字上板 — 最多 14 字，Enter 送出">
+      <input type="text" id="msg" maxlength="14" placeholder="打字上板 — 最多 14 字，留空 Enter 還原">
       <button class="send" id="sendBtn">送板</button>
     </div>
   </div>
@@ -450,16 +425,15 @@ body.fs .fshint.show{ opacity:1; }
 
   <div class="deck-row tight">
     <button class="toggle" id="soundBtn" aria-pressed="false">翻頁聲 Off</button>
-    <button class="toggle" id="autoBtn" aria-pressed="false">自動輪播 Off</button>
     <button class="send" id="fsBtn">全螢幕</button>
   </div>
 </div>
 
-<div class="fshint" id="fshint">Esc 離開 · 1–4 切頻道 · Space 輪播</div>
+<div class="fshint" id="fshint">Esc 離開 · Space 下一頁</div>
 
 <p class="note">
-  10 行 · 航班頻道是台北時間往後 4 小時的 TPE 出境班次，狀態跟著時鐘走 ·
-  <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
+  TPE 出境 · 台北時間前 1 小時到後 4 小時，每 25 秒翻下一頁，翻完回到最前面 ·
+  <b>F</b> 全螢幕 · <b>Space</b> 下一頁 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
 
@@ -782,10 +756,10 @@ body.fs .fshint.show{ opacity:1; }
   var NUMS = " 0123456789:.";
 
   var COLS = [
-    { key:"time",   n:5,  drum:NUMS },
-    { key:"flight", n:7,  drum:DRUM },
-    { key:"body",   n:13, drum:DRUM },
-    { key:"status", n:9,  drum:DRUM }
+    { key:"time",   n:5,  head:"時間 Time",          drum:NUMS },
+    { key:"flight", n:7,  head:"班機 Flight",        drum:DRUM },
+    { key:"body",   n:13, head:"目的地 Destination", drum:DRUM },
+    { key:"status", n:9,  head:"狀態 Status",        drum:DRUM }
   ];
   var ROWS = 10;                           // rows on the board
   var BLANK = ["", "", "", "", "idle"];    // what an unused row shows
@@ -800,17 +774,12 @@ body.fs .fshint.show{ opacity:1; }
   // rows[] is 10 long and row.slot is its position on the board, which is what
   // the cascade beats on so the board sweeps top-down.
   var rows = [];
-  var headEls = [];
   (function(){
     var grid = document.getElementById("grid");
     // one column for the lamp, then one per COLS entry
     grid.style.gridTemplateColumns = "repeat(" + (COLS.length + 1) + ",auto)";
     grid.appendChild(div("colhead", ""));
-    COLS.forEach(function(){
-      var h = div("colhead", "");
-      headEls.push(h);
-      grid.appendChild(h);
-    });
+    COLS.forEach(function(c){ grid.appendChild(div("colhead", c.head)); });
 
     for(var r = 0; r < ROWS; r++){
       var lampCell = div("rowlamp");
@@ -917,8 +886,9 @@ body.fs .fshint.show{ opacity:1; }
     ["23:55","JX 202","LOS ANGELES"]
   ];
 
-  var WINDOW_MIN = 240;   // 板面只顯示現在往後四小時
-  var LINGER_MIN = 10;    // 起飛後再掛十分鐘，最上面那排才不會憑空消失
+  var BACK_MIN = 60;        // 往前一小時：剛走掉的班次還留在板上
+  var WINDOW_MIN = 240;     // 往後四小時
+  var PAGE_EVERY = 25000;   // 每 25 秒翻下一頁，翻完回到最前面
 
   /* 台北沒有日光節約時間（1979 年就停了），所以固定 +8 是精確值，不必動用
      Intl 或時區資料庫 — 看板機器設在哪一區，板上都是 TPE 的時間。 */
@@ -957,26 +927,38 @@ body.fs .fshint.show{ opacity:1; }
   }
 
   /* 班表是「每天」的，所以視窗要繞過午夜：23:55 那班在 00:30 看是剛起飛，
-     00:20 那班在 22:00 看是四小時後。先取 1440 的餘數，再把「剛過去」的那
-     一小段折成負值，這樣排序和分段都只是比大小。 */
-  function flightRows(){
+     00:20 那班在 22:00 看是四小時後。先取 1440 的餘數，再把「前一小時」那一段
+     折成負值，這樣排序和分段都只是比大小。 */
+  function flightList(){
     var now = tpeMinutes();
     var due = [];
     for(var i = 0; i < TIMETABLE.length; i++){
       var f = TIMETABLE[i];
       var rel = (toMin(f[0]) - now + 1440) % 1440;
-      if(rel >= 1440 - LINGER_MIN) rel -= 1440;
+      if(rel >= 1440 - BACK_MIN) rel -= 1440;
       if(rel > WINDOW_MIN) continue;
       var st = stateFor(rel);
       due.push([rel, [f[0], f[1], f[2], st[1], st[2]]]);
     }
     due.sort(function(a, b){ return a[0] - b[0]; });
-    return due.slice(0, ROWS).map(function(d){ return d[1]; });
+    return due.map(function(d){ return d[1]; });
   }
 
-  function flightSub(){
-    var m = tpeMinutes();
-    return "TAOYUAN INTL · " + hhmm(m) + "-" + hhmm(m + WINDOW_MIN);
+  /* 視窗裝得下的班次通常不只十班，所以切頁輪播 —— 一頁十行，翻到最後一頁就回
+     到第一頁（也就是前一小時那頁），一直繞。班次會隨時間掉出視窗，頁數跟著變，
+     所以頁碼每次都要收斂回實際範圍，不能讓它一直加上去。 */
+  function flightPage(n){
+    var list = flightList();
+    var pages = Math.max(1, Math.ceil(list.length / ROWS));
+    var p = ((n % pages) + pages) % pages;
+    var now = tpeMinutes();
+    return {
+      page: p,
+      pages: pages,
+      rows: list.slice(p * ROWS, p * ROWS + ROWS),
+      label: "TPE " + hhmm(now - BACK_MIN) + "-" + hhmm(now + WINDOW_MIN) +
+             " · " + (p + 1) + " OF " + pages
+    };
   }
 
   /* ---------- 班表資料檔 ----------
@@ -995,72 +977,12 @@ body.fs .fshint.show{ opacity:1; }
       .then(function(data){
         if(!data || !data.rows || data.rows.length < 5) return;
         TIMETABLE = data.rows;
-        refreshFlights();          // 換完馬上對一次，沒變就什麼都不會動
+        paintFlights();            // 換完馬上對一次，沒變就什麼都不會動
       })
       .catch(function(){});
   }
 
-  /* ---------- content channels ----------
-     rows 和 sub 可以是值，也可以是函式 — 航班頻道靠這個變成活的。 */
-  var CHANNELS = {
-    flights:{
-      marquee:"DEPARTURES",
-      heads:["時間 Time", "班機 Flight", "目的地 Destination", "狀態 Status"],
-      sub:flightSub,
-      rows:flightRows
-    },
-    schedule:{
-      marquee:"TODAY",
-      sub:"WEDNESDAY · 26 AUGUST",
-      heads:["時間 Time", "類別 Type", "內容 Agenda", "地點 Where"],
-      rows:[
-        ["08:30","SYNC","STANDUP","ROOM 2","idle"],
-        ["09:00","REVIEW","DESIGN REVIEW","ROOM 4","idle"],
-        ["10:00","MEET","ONE ON ONE","ONLINE","idle"],
-        ["11:00","CALL","CLIENT CALL","NOW","live"],
-        ["11:45","BREAK","LUNCH","CANTEEN","ok"],
-        ["13:00","PLAN","SPRINT PLAN","ROOM 4","idle"],
-        ["14:00","DEMO","BUILD DEMO","STUDIO","idle"],
-        ["15:00","FOCUS","DEEP WORK","DESK","ok"],
-        ["15:45","REVIEW","CODE REVIEW","ONLINE","idle"],
-        ["16:30","SYNC","VENDOR SYNC","ROOM 1","idle"]
-      ]
-    },
-    ops:{
-      marquee:"SYSTEMS",
-      sub:"PRODUCTION · AP-NORTHEAST-1",
-      heads:["數值 Value", "區間 Window", "系統 System", "狀態 State"],
-      rows:[
-        ["99.98","30 DAY","API GATEWAY","HEALTHY","ok"],
-        ["0.12","P95","DATABASE","DEGRADED","alert"],
-        ["04:12","TODAY","LAST DEPLOY","SHIPPED","idle"],
-        ["3","OPEN","OPEN TICKETS","REVIEW","live"],
-        ["128","LIVE","EDGE NODES","ONLINE","ok"],
-        ["99.90","30 DAY","CDN","HEALTHY","ok"],
-        ["0.04","P95","CACHE","HEALTHY","ok"],
-        ["17","LIVE","BUILD QUEUE","RUNNING","live"],
-        ["99.95","30 DAY","AUTH SERVICE","HEALTHY","ok"],
-        ["1.80","P95","SEARCH INDEX","SLOW","alert"]
-      ]
-    },
-    zh:{
-      marquee:"翻頁看板",
-      sub:"中文字元也能上板 · 混排測試",
-      heads:["時間 Time", "負責 Owner", "項目 Item", "狀態 State"],
-      rows:[
-        ["週三","設計","設計評審","進行中","live"],
-        ["10:05","前端","第二版排程","待確認","idle"],
-        ["延誤","後端","資料串接","尚未接","alert"],
-        ["完成","前端","第一版骨架","已交付","ok"],
-        ["14:00","前端","全螢幕模式","已完成","ok"],
-        ["15:30","測試","中文字元","正常","ok"],
-        ["16:00","維運","效能量測","已完成","ok"],
-        ["17:00","設計","翻頁聲調校","待回饋","live"],
-        ["週四","後端","欄位確認","等回覆","live"],
-        ["09:00","文件","資料來源","未定","idle"]
-      ]
-    }
-  };
+  var MARQUEE = "DEPARTURES";
 
   function pad2(x){ return String(x).length < 2 ? "0" + x : String(x); }
 
@@ -1069,13 +991,6 @@ body.fs .fshint.show{ opacity:1; }
     document.getElementById("stamp").textContent =
       "LAST FLIP " + pad2(t.getHours()) + ":" + pad2(t.getMinutes()) + ":" + pad2(t.getSeconds());
   }
-
-  function clearChannelState(){
-    var btns = document.querySelectorAll(".chan");
-    for(var i = 0; i < btns.length; i++) btns[i].setAttribute("aria-pressed", "false");
-  }
-
-  function valueOf(v){ return typeof v === "function" ? v() : v; }
 
   /* Rows depart one after another rather than all at once. A real board reads
      top-down like this, and it keeps far fewer flaps in flight at any instant.
@@ -1097,43 +1012,33 @@ body.fs .fshint.show{ opacity:1; }
     });
   }
 
-  var curChan = "";
-  var lastFlights = "";
+  /* ---------- 板面 ----------
+     每 25 秒翻一頁，每整分重算一次狀態，班表換了也重畫一次 —— 全部走這裡。
+     算出來跟板上一樣就什麼都不做：只有一頁的深夜時段，這裡每 25 秒只是一次字串
+     比對，沒有 DOM 讀寫，看板本體完全不動。 */
+  var page = 0;
+  var lastPaint = "";
 
-  function show(key){
-    var ch = CHANNELS[key];
-    if(!ch) return;
-    curChan = key;
-
-    var heads = ch.heads;
-    for(var h = 0; h < headEls.length; h++) headEls[h].textContent = heads[h];
-
-    marquee.write(ch.marquee, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
-    subline.write(valueOf(ch.sub), { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
-
-    var data = valueOf(ch.rows);
-    lastFlights = key === "flights" ? JSON.stringify(data) : "";
-    writeRows(data);
-
-    clearChannelState();
-    var btn = document.querySelector('.chan[data-ch="' + key + '"]');
-    if(btn) btn.setAttribute("aria-pressed", "true");
+  function paintFlights(){
+    var view = flightPage(page);
+    page = view.page;                        // 班次變少時把頁碼收回實際範圍
+    var key = JSON.stringify(view.rows) + "|" + view.label;
+    if(key === lastPaint) return;
+    lastPaint = key;
+    subline.write(view.label, { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
+    writeRows(view.rows);
     stampNow();
   }
 
-  /* ---------- the flights channel follows the clock ----------
-     Re-derived on every minute boundary, but only written when the answer
-     actually changed. Between departures that is a string compare and nothing
-     else — no DOM reads, no writes, and the board stays genuinely idle. */
-  function refreshFlights(){
-    if(curChan !== "flights") return;
-    var data = flightRows();
-    var key = JSON.stringify(data);
-    if(key === lastFlights) return;
-    lastFlights = key;
-    subline.write(flightSub(), { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
-    writeRows(data);
-    stampNow();
+  function nextPage(){
+    page++;
+    paintFlights();
+  }
+
+  function showBoard(){
+    marquee.write(MARQUEE, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
+    lastPaint = "";
+    paintFlights();
   }
 
   /* ---------- clock ----------
@@ -1146,30 +1051,23 @@ body.fs .fshint.show{ opacity:1; }
     var m = t.getHours() * 60 + t.getMinutes();
     if(m !== lastMin){
       lastMin = m;
-      refreshFlights();
+      paintFlights();
     }
   }
   tickClock();
   setInterval(tickClock, 1000);
 
   /* ---------- controls ---------- */
-  var chanBtns = document.querySelectorAll(".chan");
-  for(var b = 0; b < chanBtns.length; b++){
-    chanBtns[b].addEventListener("click", function(){
-      initAudio();
-      show(this.getAttribute("data-ch"));
-    });
-  }
-
   var msg = document.getElementById("msg");
   function sendMsg(){
     var v = msg.value.trim();
-    if(!v) return;
-    if(!/[^\x00-\x7F]/.test(v)) v = v.toUpperCase();
     initAudio();
+    // 沒有頻道可以切回來了，所以留空送出就是還原成班表
+    if(!v){ showBoard(); return; }
+    if(!/[^\x00-\x7F]/.test(v)) v = v.toUpperCase();
     marquee.write(v, { center:true, stagger:24, jitter:120 });
     subline.write("CUSTOM MESSAGE", { center:true, stagger:10, jitter:150 });
-    clearChannelState();
+    lastPaint = "";               // 還原時整面重畫，不要被「沒變」擋掉
     stampNow();
   }
   document.getElementById("sendBtn").addEventListener("click", sendMsg);
@@ -1203,27 +1101,6 @@ body.fs .fshint.show{ opacity:1; }
     soundOn = !soundOn;
     soundBtn.setAttribute("aria-pressed", String(soundOn));
     soundBtn.textContent = "翻頁聲 " + (soundOn ? "On" : "Off");
-  });
-
-  var autoBtn = document.getElementById("autoBtn");
-  var autoTimer = null;
-  var order = ["flights", "schedule", "ops", "zh"];
-  var idx = 0;
-  autoBtn.addEventListener("click", function(){
-    if(autoTimer){
-      clearInterval(autoTimer);
-      autoTimer = null;
-      autoBtn.setAttribute("aria-pressed", "false");
-      autoBtn.textContent = "自動輪播 Off";
-    } else {
-      initAudio();
-      autoTimer = setInterval(function(){
-        idx = (idx + 1) % order.length;
-        show(order[idx]);
-      }, 9000);
-      autoBtn.setAttribute("aria-pressed", "true");
-      autoBtn.textContent = "自動輪播 On";
-    }
   });
 
   /* ---------- wall mode ----------
@@ -1286,11 +1163,7 @@ body.fs .fshint.show{ opacity:1; }
 
     if(e.key === "Escape" && wall){ exitWall(); return; }
     if(e.key === "f" || e.key === "F"){ wall ? exitWall() : enterWall(); return; }
-    if(e.key === " "){ e.preventDefault(); autoBtn.click(); return; }
-    if(e.key >= "1" && e.key <= "4"){
-      var b = document.querySelectorAll(".chan")[Number(e.key) - 1];
-      if(b) b.click();
-    }
+    if(e.key === " "){ e.preventDefault(); initAudio(); nextPage(); }
   });
 
   /* ---------- fit the board to whatever space is left ----------
@@ -1379,7 +1252,8 @@ body.fs .fshint.show{ opacity:1; }
   setInterval(loadTimetable, FEED_EVERY);
   fit();
   requestAnimationFrame(fit);
-  setTimeout(function(){ show("flights"); fit(); }, 400);
+  setTimeout(function(){ showBoard(); fit(); }, 400);
+  setInterval(nextPage, PAGE_EVERY);
   setTimeout(fit, 1200);            // once webfonts have settled
 })();
 </script>
