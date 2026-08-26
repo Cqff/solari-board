@@ -24,10 +24,10 @@ GitHub Pages: <https://cqff.github.io/solari-board/>
 
 ## 航班頻道
 
-看板只把「現在往後四小時」那一段畫出來。班表有兩個來源：接上官方即時航班之後
-用 `data/timetable.json`（見下一節），抓不到就用 `src/board.html` 裡內建的
-`TIMETABLE`。兩邊格式一樣，每筆是 `[起飛時間, 班機, 目的地]`，台北時間，照時刻
-排序：
+看板只把「現在往後四小時」那一段畫出來。班表有兩個來源：`tools/serve.mjs` 跑起來
+之後用它產生的 `data/timetable.json`（見下一節），抓不到就用 `src/board.html` 裡
+內建的 `TIMETABLE`。兩邊格式一樣，每筆是 `[起飛時間, 班機, 目的地]`，台北時間，
+照時刻排序：
 
 ```js
 var TIMETABLE = [
@@ -61,41 +61,76 @@ var TIMETABLE = [
 ### 接上官方即時航班
 
 **內建的是示範班表**：航空公司、航線、時段照著桃園機場平常的樣子排，但班號與
-時刻不是官方公告的班表，別拿它趕飛機。
+時刻不是官方公告的班表，別拿它趕飛機。要接真的資料，本地端跑起來就好：
 
-`.github/workflows/timetable.yml` 每 10 分鐘跑一次 `tools/fetch-timetable.mjs`，
-抓政府資料開放平臺
-[桃園國際機場即時航班](https://data.gov.tw/dataset/26194) 的 CSV，轉成
-`data/timetable.json` commit 回 repo。看板每 5 分鐘自己回頭抓那個檔案 —— 掛在
-牆上的看板不會有人去按重新整理。抓不到就用內建的示範班表，所以 workflow 還沒
-接、對方掛了、或直接用 `file://` 開，板面都不會開天窗。
+```bash
+node tools/serve.mjs
+```
+
+看板在 <http://localhost:8080>，開瀏覽器按 `F` 全螢幕就可以掛牆。這支做兩件事：
+
+- 把板面服務出來（`file://` 開的話瀏覽器不准抓旁邊的檔案，所以要有個 server）
+- 每 10 分鐘抓一次政府資料開放平臺
+  [桃園國際機場即時航班](https://data.gov.tw/dataset/26194) 的 CSV，轉成
+  `data/timetable.json`
+
+看板自己每 5 分鐘回頭抓那個檔案，所以**不用重新整理**，班表換了就會自己翻上去。
+抓不到（對方掛了、網路斷了）就留著上一版，再不行就用內建的示範班表 —— 板面不會
+開天窗。
+
+```bash
+node tools/serve.mjs --port 9000 --every 5     # 換埠號、改成 5 分鐘一次
+node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
+```
 
 為什麼是即時航班而不是
 [定期航班](https://data.gov.tw/dataset/7869)：定期航班七天才更新一次，每 10
 分鐘抓它 144 次沒有意義。即時航班每 5 分鐘更新，而且帶「預計時間」—— 誤點的
 班次會自動改用新的時間倒數，取消的直接不上板。
 
-上牆之前要知道的幾件事：
-
-- **排程只會在預設分支上跑**，所以這支要合進 `main` 之後才會開始動。
-- GitHub 的排程是盡力而為的，尖峰時段會延後、偶爾整輪跳過，實際間隔大概是
-  10 到 30 分鐘。
-- 班次有變才 commit，但即時資料本來就一直在變 —— 白天大概每輪都會生一個
-  commit，一天上看百來個。嫌吵就把 cron 調成 `*/30` 或 `0 * * * *`；要完全不
-  commit 的話改用 `actions/deploy-pages` 部署，那得去 Settings → Pages 把
-  Source 改成 GitHub Actions。
-- 抓不到資料的那一輪會標成 warning 跳過，不算失敗（不然每 10 分鐘寄一封失敗
-  通知），看板留著上一版。**欄位對不到才是真的失敗**，錯誤訊息會把 CSV 實際的
-  表頭印出來。
-- 60 天沒有任何動靜的 repo，GitHub 會自動停掉排程 workflow。
-- `main` 開了分支保護的話，`github-actions[bot]` 要放行才推得上去。
-
-欄位對照在 `tools/fetch-timetable.mjs` 的 `FIELDS`，一個欄位可以列好幾種寫法，
-官方換了欄名就多加一個。本地測改得對不對：
+欄位對照在 `tools/timetable.mjs` 的 `FIELDS`，一個欄位可以列好幾種寫法，官方換
+了欄名就多加一個。**對不到必要欄位不會默默產出空班表**，它會把 CSV 實際的表頭
+印出來再結束。要單獨測轉檔：
 
 ```bash
-node tools/fetch-timetable.mjs some.csv   # 吃本地 CSV，不連網
+node tools/fetch-timetable.mjs some.csv   # 抓一次就結束，不起 server
 ```
+
+### 開機自己跑
+
+Linux（systemd）：
+
+```ini
+# /etc/systemd/system/solari.service
+[Unit]
+Description=Solari 翻頁看板
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /path/to/solari-board/tools/serve.mjs
+WorkingDirectory=/path/to/solari-board
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`sudo systemctl enable --now solari`。macOS 用 launchd、Windows 用工作排程器也是
+一樣的道理 —— 這支沒有相依套件，有 Node 就能跑。
+
+> Windows 主控台如果印出亂碼，是主控台的代碼頁不是 UTF-8，先下 `chcp 65001`。
+
+### 改用 GitHub Actions 跑（可選）
+
+不想在本地留一台機器的話，`.github/workflows/timetable.yml` 是同一件事的雲端版：
+每 10 分鐘抓一次、把 `data/timetable.json` commit 回 repo，GitHub Pages 上的看板
+就會讀到。**預設是關的**，要用的話把裡面 `schedule` 那兩行的註解拿掉，並且把
+`.gitignore` 裡的 `data/timetable.json` 移掉（不然 bot 推不上去）。
+
+代價要知道：即時資料一直在變，白天大概每輪都會生一個 commit，一天上看百來個；
+而且 GitHub 的排程會延後甚至跳過，實際間隔大概是 10 到 30 分鐘。本地跑沒有這兩
+個問題。
 
 ## 換成自己的資料
 
