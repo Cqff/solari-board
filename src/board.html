@@ -1,0 +1,1209 @@
+<title>Solari 翻頁看板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Archivo:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --hall:#0C0D0F;
+  --housing-top:#212328;
+  --housing-mid:#17181B;
+  --housing-bot:#121316;
+  --flap-a:#282A2F;
+  --flap-b:#1D1F23;
+  --ink:#F0EADB;
+  --ink-dim:#96928A;
+  --ink-faint:#63615B;
+  --amber:#E8A13C;
+  --amber-deep:#7E5518;
+  --alert:#C4553F;
+  --ok:#7E9B6E;
+  --rail:rgba(240,234,219,.10);
+  --rail-soft:rgba(240,234,219,.055);
+
+  --f-flap:"Barlow Condensed","Helvetica Neue",Arial Narrow,sans-serif;
+  --f-sign:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-data:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+
+  /* One unit drives every flap size, so the whole board scales as a set.
+     Fullscreen just redefines it against the shorter screen axis too. */
+  --u:clamp(7px,1.5vw,19px);
+}
+
+*{ box-sizing:border-box; }
+
+/* The page is exactly one viewport tall and never scrolls. The board is sized
+   to whatever space is left over after the controls (see fit() in the script),
+   so everything is on screen at once at any window size. */
+body{
+  margin:0;
+  height:100vh;
+  overflow:hidden;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #1A1C21 0%, rgba(12,13,15,0) 62%),
+    radial-gradient(90% 60% at 50% 108%, #16171B 0%, rgba(12,13,15,0) 55%),
+    var(--hall);
+  color:var(--ink);
+  font-family:var(--f-sign);
+  -webkit-font-smoothing:antialiased;
+  padding:clamp(10px,1.8vh,28px) clamp(10px,2vw,28px);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:clamp(8px,1.3vh,18px);
+}
+
+/* ─────────  H O U S I N G  ───────── */
+
+.housing{
+  position:relative;
+  width:100%;
+  max-width:1280px;
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  border-radius:12px;
+  border:1px solid rgba(240,234,219,.11);
+  background:linear-gradient(180deg,var(--housing-top) 0%,var(--housing-mid) 13%,var(--housing-bot) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -1px 0 rgba(0,0,0,.6),
+    0 44px 90px -34px rgba(0,0,0,.95),
+    0 0 0 1px rgba(0,0,0,.55);
+  overflow:hidden;
+}
+.housing::before{
+  content:"";
+  position:absolute; inset:0;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px);
+  pointer-events:none;
+}
+.screw{
+  position:absolute; width:5px; height:5px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#4A4C51,#16171A 70%);
+  box-shadow:0 1px 0 rgba(255,255,255,.07);
+}
+.screw.tl{ top:9px; left:9px; } .screw.tr{ top:9px; right:9px; }
+.screw.bl{ bottom:9px; left:9px; } .screw.br{ bottom:9px; right:9px; }
+
+.rail{
+  position:relative;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; flex-wrap:wrap;
+  padding:14px clamp(16px,2.6vw,26px);
+  border-bottom:1px solid var(--rail);
+  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.16));
+}
+.rail.foot{
+  border-bottom:0; border-top:1px solid var(--rail);
+  background:linear-gradient(180deg,rgba(0,0,0,.22),rgba(255,255,255,.015));
+}
+
+.sign{ display:flex; align-items:baseline; gap:10px; min-width:0; }
+.sign .mark{
+  font-family:var(--f-sign); font-weight:600; font-size:13px;
+  letter-spacing:.20em; text-transform:uppercase; color:var(--ink);
+}
+.stampline{
+  font-family:var(--f-data); font-size:10px; letter-spacing:.10em; color:var(--ink-faint);
+}
+.sign .sub{
+  font-family:var(--f-data); font-size:10.5px; letter-spacing:.06em; color:var(--ink-dim);
+}
+
+.lamp{
+  width:6px; height:6px; border-radius:50%; flex:none;
+  background:var(--amber);
+  box-shadow:0 0 7px 1px rgba(232,161,60,.55);
+}
+.lamp.idle{ background:#4A4842; box-shadow:none; }
+.lamp.alert{ background:var(--alert); box-shadow:0 0 7px 1px rgba(196,85,63,.5); }
+.lamp.ok{ background:var(--ok); box-shadow:0 0 6px 1px rgba(126,155,110,.4); }
+.lamp.live{ animation:breathe 2.6s ease-in-out infinite; }
+@keyframes breathe{ 0%,100%{opacity:1} 50%{opacity:.32} }
+
+.clockwrap{ display:flex; align-items:center; gap:10px; }
+.clockwrap .cap{
+  font-family:var(--f-data); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-faint);
+}
+
+.stage{
+  position:relative;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+  padding:clamp(10px,2.2vh,30px) clamp(12px,2vw,24px) clamp(10px,1.8vh,24px);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:clamp(8px,1.5vh,18px);
+}
+
+.marquee-block{ display:flex; flex-direction:column; align-items:center; gap:clamp(5px,.9vh,11px); }
+
+.divider{
+  width:100%; height:1px; flex:none;
+  background:linear-gradient(90deg,transparent,var(--rail) 12%,var(--rail) 88%,transparent);
+  margin:clamp(2px,.6vh,8px) 0;
+}
+
+/* ─────────  G R I D  ───────── */
+
+.gridscroll{ width:100%; overflow:hidden; display:flex; justify-content:center; }
+
+.blocks{
+  display:flex; width:max-content; margin:0 auto;
+  gap:clamp(18px,2.6vw,44px);
+  align-items:flex-start;
+}
+.blocks > .board-grid:last-child{
+  padding-left:clamp(18px,2.6vw,44px);
+  border-left:1px solid var(--rail-soft);
+}
+.board-grid{
+  width:max-content;
+  display:grid;
+  grid-template-columns:auto auto auto auto;
+  align-items:center;
+  column-gap:clamp(6px,calc(var(--u) * .5),14px);
+  row-gap:clamp(5px,calc(var(--u) * .42),12px);
+}
+.colhead{
+  font-family:var(--f-sign); font-size:9.5px; font-weight:500;
+  letter-spacing:.20em; text-transform:uppercase; color:var(--ink-faint);
+  padding-bottom:5px; white-space:nowrap;
+}
+.rowlamp{ display:flex; justify-content:center; width:clamp(8px,calc(var(--u) * .72),16px); }
+
+/* ─────────  F L A P   C E L L  ───────── */
+
+.line{ display:flex; gap:clamp(1px,calc(var(--u) * .09),3px); }
+
+.cell{
+  position:relative; display:inline-block; flex:none;
+  width:var(--cw); height:var(--ch);
+  perspective:340px;
+  background:#0B0C0D;
+  box-shadow:0 1px 2px rgba(0,0,0,.55);
+  contain:layout style;
+}
+.cell{ --ch:calc(var(--cw) * 1.46); --fs:calc(var(--ch) * .70); }
+.cell.lg{ --cw:calc(var(--u) * 2.2); }
+.cell.md{ --cw:var(--u); }
+.cell.sm{ --cw:calc(var(--u) * .78); }
+
+/* Flat faces, not gradients. Re-rasterising two stacked linear-gradients on a
+   few hundred small rotating elements every frame was the single biggest cost
+   in this board; flat fills plus 1px inset rules cost almost nothing and read
+   closer to real matte flap stock anyway. Depth comes from the lighter top
+   half sitting over the darker bottom half. */
+.half,.flap{
+  position:absolute; left:0; width:100%; height:calc(var(--ch)/2);
+  overflow:hidden;
+  background:var(--flap-a);
+}
+.flap{ backface-visibility:hidden; }
+/* The hinge seam is a 1px sliver of the cell's own dark background showing
+   through, not a box-shadow. Inset shadows on ~1900 turning elements measured
+   as the largest remaining paint cost at this board size; this is free. */
+/* Square corners. A rounded corner makes the renderer clip every one of these
+   ~1900 turning elements to a mask; dropping the radius halved frame times at
+   this board size. Real flap stock is square-cut anyway. */
+.top,.front{
+  top:0; height:calc(var(--ch) / 2 - 1px);
+}
+.bot,.back{
+  top:calc(var(--ch) / 2);
+  background:var(--flap-b);
+}
+.top,.bot{ z-index:1; }
+.flap{ z-index:2; }
+
+.g{
+  position:absolute; left:0; width:100%; height:var(--ch);
+  line-height:var(--ch); text-align:center;
+  font-family:var(--f-flap); font-weight:600; font-size:var(--fs);
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+  user-select:none;
+}
+.top .g,.front .g{ top:0; }
+.bot .g,.back .g{ top:calc(var(--ch)/-2); }
+
+.front{ transform-origin:center bottom; transform:rotateX(0deg); }
+.back{ transform-origin:center top; transform:rotateX(90deg); }
+
+/* ─────────  C O N T R O L   D E C K  ───────── */
+
+.deck{
+  width:100%; max-width:1280px;
+  flex:0 0 auto;
+  border:1px solid var(--rail-soft);
+  border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(0,0,0,.24));
+  padding:clamp(10px,1.4vh,16px) clamp(14px,2vw,22px);
+  display:flex; flex-wrap:wrap; align-items:center;
+  column-gap:clamp(12px,1.6vw,22px); row-gap:clamp(8px,1.1vh,14px);
+}
+.deck-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.deck-row.grow{ flex:1 1 300px; min-width:0; }
+.deck-row.split{ justify-content:space-between; }
+.deck-row.tight{ gap:9px; }
+
+.legend{
+  font-family:var(--f-sign); font-size:9.5px; font-weight:600;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--ink-faint);
+  width:100%; margin-bottom:-6px;
+}
+
+.chan{
+  font-family:var(--f-sign); font-size:12px; font-weight:500; letter-spacing:.05em;
+  color:var(--ink-dim);
+  background:linear-gradient(180deg,#212328,#16181B);
+  border:1px solid var(--rail);
+  border-radius:4px;
+  padding:9px 14px;
+  cursor:pointer;
+  transition:color .16s,border-color .16s,transform .08s;
+}
+.chan:hover{ color:var(--ink); border-color:rgba(240,234,219,.22); }
+.chan:active{ transform:translateY(1px); }
+.chan[aria-pressed="true"]{
+  color:var(--ink);
+  border-color:var(--amber-deep);
+  box-shadow:inset 0 0 0 1px rgba(232,161,60,.18),0 0 14px -6px rgba(232,161,60,.6);
+}
+
+.field{ display:flex; gap:8px; flex:1 1 340px; min-width:0; }
+input[type="text"]{
+  flex:1 1 auto; min-width:0;
+  font-family:var(--f-flap); font-weight:600; font-size:16px; letter-spacing:.04em;
+  color:var(--ink);
+  background:#0E0F11;
+  border:1px solid var(--rail);
+  border-radius:4px;
+  padding:10px 13px;
+}
+input[type="text"]::placeholder{
+  font-family:var(--f-sign); font-size:12.5px; font-weight:400; letter-spacing:0; color:#5B5952;
+}
+input[type="text"]:focus{ outline:none; border-color:var(--amber-deep); box-shadow:0 0 0 1px rgba(232,161,60,.22); }
+
+.send{
+  font-family:var(--f-sign); font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:#171308;
+  background:linear-gradient(180deg,#F0B052,var(--amber));
+  border:1px solid #C7871F;
+  border-radius:4px;
+  padding:10px 18px; cursor:pointer; white-space:nowrap;
+  transition:filter .16s,transform .08s;
+}
+.send:hover{ filter:brightness(1.08); }
+.send:active{ transform:translateY(1px); }
+
+.knob{
+  display:flex; align-items:center; gap:9px;
+  font-family:var(--f-data); font-size:10.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink-dim);
+}
+.knob .val{ color:var(--ink); min-width:56px; }
+
+input[type="range"]{
+  -webkit-appearance:none; appearance:none;
+  width:104px; height:3px; border-radius:2px;
+  background:linear-gradient(90deg,var(--amber-deep),rgba(240,234,219,.14));
+  cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#5C5E63,#1D1F22 72%);
+  border:1px solid rgba(240,234,219,.3);
+}
+input[type="range"]::-moz-range-thumb{
+  width:13px; height:13px; border-radius:50%; border:1px solid rgba(240,234,219,.3);
+  background:radial-gradient(circle at 34% 30%,#5C5E63,#1D1F22 72%);
+}
+
+.toggle{
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--f-data); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-dim);
+  background:transparent; border:1px solid var(--rail); border-radius:4px;
+  padding:8px 12px; cursor:pointer;
+  transition:color .16s,border-color .16s;
+}
+.toggle:hover{ color:var(--ink); }
+.toggle[aria-pressed="true"]{ color:var(--ink); border-color:var(--amber-deep); }
+
+.note{
+  flex:0 0 auto;
+  font-family:var(--f-data); font-size:10px; line-height:1.6; color:var(--ink-faint);
+  max-width:110ch; text-align:center; margin:0;
+}
+.note b{ color:var(--ink-dim); font-weight:500; }
+
+:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+
+/* ─────────  W A L L   M O D E  ─────────
+   Real fullscreen when the browser grants it; otherwise the same layout
+   pinned over the viewport, so the board fills the screen either way.
+   The unit is sized against whichever screen axis runs out first. */
+body.fs{ padding:0; gap:0; }
+body.fs .deck,
+body.fs .note{ display:none; }
+body.fs .housing{
+  max-width:none;
+  border:0; border-radius:0;
+  box-shadow:none;
+}
+body.fs .screw{ display:none; }
+body.fs .stage{
+  flex:1; justify-content:center;
+  padding:clamp(10px,2vh,30px) clamp(14px,2vw,40px);
+}
+body.fs .rail{ padding:clamp(8px,1.4vh,18px) clamp(16px,2vw,40px); }
+body.fs .sign .mark{ font-size:clamp(12px,1.1vw,18px); }
+body.fs .clockwrap .cap,
+body.fs .stampline{ font-size:clamp(9px,.72vw,13px); }
+body.fs .colhead{ font-size:clamp(8px,.62vw,12px); }
+
+.fshint{
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+  font-family:var(--f-data); font-size:11px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-dim);
+  background:rgba(10,11,13,.82);
+  border:1px solid var(--rail);
+  border-radius:4px; padding:8px 14px;
+  opacity:0; pointer-events:none;
+  transition:opacity .45s ease;
+  z-index:50;
+}
+body.fs .fshint.show{ opacity:1; }
+@media (prefers-reduced-motion:reduce){ .fshint{ transition:none; } }
+
+@media (prefers-reduced-motion:reduce){
+  .lamp.live{ animation:none; }
+}
+</style>
+
+<div class="housing">
+  <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+
+  <div class="rail">
+    <div class="sign">
+      <span class="mark">Platform 01</span>
+      <span class="sub">SOLARI · 44-FLAP DRUM</span>
+    </div>
+    <div class="clockwrap">
+      <span class="lamp live"></span>
+      <span class="cap">Local</span>
+      <div class="line" id="clock"></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="marquee-block">
+      <div class="line" id="marquee"></div>
+      <div class="line" id="subline"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="gridscroll">
+      <div class="blocks">
+        <div class="board-grid" id="gridA"></div>
+        <div class="board-grid" id="gridB"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail foot">
+    <span class="stampline">MECHANICAL DISPLAY UNIT · REV 2</span>
+    <span class="stampline" id="perf">IDLE</span>
+    <span class="stampline" id="stamp">STANDBY</span>
+  </div>
+</div>
+
+<div class="deck">
+  <div class="deck-row">
+    <button class="chan" data-ch="flights" aria-pressed="true">航班</button>
+    <button class="chan" data-ch="schedule" aria-pressed="false">行程</button>
+    <button class="chan" data-ch="ops" aria-pressed="false">系統</button>
+    <button class="chan" data-ch="zh" aria-pressed="false">中文</button>
+  </div>
+
+  <div class="deck-row grow">
+    <div class="field">
+      <input type="text" id="msg" maxlength="14" placeholder="打字上板 — 最多 14 字，Enter 送出">
+      <button class="send" id="sendBtn">送板</button>
+    </div>
+  </div>
+
+  <div class="deck-row tight">
+    <div class="knob">
+      <label for="speed">每頁</label>
+      <input type="range" id="speed" min="18" max="90" value="34" step="2">
+      <span class="val" id="speedVal">34 ms</span>
+    </div>
+    <div class="knob">
+      <label for="travel">行程</label>
+      <input type="range" id="travel" min="3" max="20" value="7" step="1">
+      <span class="val" id="travelVal">7 頁</span>
+    </div>
+    <div class="knob">
+      <label for="beat">排距</label>
+      <input type="range" id="beat" min="20" max="120" value="50" step="2">
+      <span class="val" id="beatVal">50 ms</span>
+    </div>
+  </div>
+
+  <div class="deck-row tight">
+    <button class="toggle" id="soundBtn" aria-pressed="false">翻頁聲 Off</button>
+    <button class="toggle" id="autoBtn" aria-pressed="false">自動輪播 Off</button>
+    <button class="send" id="fsBtn">全螢幕</button>
+  </div>
+</div>
+
+<div class="fshint" id="fshint">Esc 離開 · 1–4 切頻道 · Space 輪播</div>
+
+<p class="note">
+  2 區 × 8 行 = 16 筆 · <b>F</b> 全螢幕 · <b>1–4</b> 切頻道 · <b>Space</b> 輪播 ·
+  每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
+</p>
+
+<script>
+(function(){
+  "use strict";
+
+  var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var DRUM = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:-/'&!?+#@%";
+  var TICK = 34;
+
+  // A cell used to crawl the whole drum to reach its character — up to 49 flaps,
+  // over two seconds. Now a long journey starts with one big skip so the visible
+  // run is always ~12-16 flaps. The skip happens inside the first falling flap,
+  // where nothing is legible anyway, so it still rattles like a real drum.
+  var TRAVEL = 7;
+
+  // One shared beat drives both the row cascade and the clack rhythm, so what
+  // you hear lines up with what you see instead of being two loose streams.
+  var BEAT = 50;
+
+  /* ============================================================
+     SCHEDULER — one requestAnimationFrame loop drives every flap.
+     No per-cell timers, no CSS-animation restarts, and critically
+     no forced synchronous layout: the loop only ever WRITES style,
+     it never reads geometry. Idle boards cost zero CPU because the
+     loop stops itself when nothing is moving.
+     ============================================================ */
+  var active = [];
+  var rafId = 0;
+
+  function wake(cell){
+    if(cell.queued) return;
+    cell.queued = true;
+    active.push(cell);
+    if(!rafId) rafId = requestAnimationFrame(frame);
+  }
+
+  function frame(now){
+    rafId = 0;
+    var flips = 0;
+    var w = 0;
+    // compacted in place — allocating a fresh array every frame handed the GC
+    // ~160 objects at 60fps and showed up as 100ms+ stalls
+    for(var i = 0; i < active.length; i++){
+      var c = active[i];
+      flips += c.advance(now);
+      if(c.queued) active[w++] = c;
+    }
+    active.length = w;
+
+    // clacks land on the beat, carrying however many flaps moved since the last one
+    pending += flips;
+    if(pending && now - beatAt >= BEAT){
+      beatAt = now;
+      if(soundOn) clack(pending);
+      pending = 0;
+    }
+    if(!w) pending = 0;
+
+    meter(now);
+    if(w) rafId = requestAnimationFrame(frame);
+  }
+
+  var beatAt = 0, pending = 0;
+
+  /* frame meter — so the load is measurable, not a claim */
+  var perfEl = document.getElementById("perf"), fpsT = 0, fpsN = 0;
+
+  function meter(now){
+    if(!active.length){ perfEl.textContent = "IDLE"; fpsT = 0; fpsN = 0; return; }
+    if(!fpsT){ fpsT = now; fpsN = 0; return; }
+    fpsN++;
+    if(now - fpsT >= 500){
+      perfEl.textContent = Math.round(fpsN * 1000 / (now - fpsT)) + " FPS · " + active.length + " FLAPS";
+      fpsT = now;
+      fpsN = 0;
+    }
+  }
+
+  /* ============================================================
+     AUDIO — a flap hitting its stop is a PITCHED knock, not a hiss.
+     Filtered white noise (what this used to be) reads as static, which
+     is why it just sounded loud. Each clack is now a short triangle
+     body with a falling pitch — the card striking the stop — plus a
+     few milliseconds of bright edge tick for the plastic.
+
+     It is also on a beat instead of one-per-flap: a full board update
+     is ~1500 individual flaps, and honestly reproducing that is a roar
+     no matter how good each sample is. One clack per BEAT, weighted by
+     how many flaps moved in that window, gives a countable mechanical
+     tick that gets fuller when the board is busy.
+     ============================================================ */
+  var actx = null, noiseBuf = null, master = null, bodyBus = null, edgeBus = null, soundOn = false;
+
+  function initAudio(){
+    if(actx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    actx = new AC();
+
+    master = actx.createGain();
+    master.gain.value = 0.42;
+    master.connect(actx.destination);
+
+    bodyBus = actx.createBiquadFilter();      // takes the fizz off the knock
+    bodyBus.type = "lowpass";
+    bodyBus.frequency.value = 1400;
+    bodyBus.Q.value = 0.7;
+    bodyBus.connect(master);
+
+    edgeBus = actx.createBiquadFilter();      // just the plastic edge, quietly
+    edgeBus.type = "highpass";
+    edgeBus.frequency.value = 2600;
+    edgeBus.connect(master);
+
+    var n = Math.floor(actx.sampleRate * 0.03);
+    noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for(var i = 0; i < n; i++){ d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2); }
+  }
+
+  function clack(weight){
+    if(!actx) return;
+    var at = actx.currentTime;
+    // heavier when more flaps land together — more mass, lower knock
+    var w = Math.min(1, weight / 9);
+    var pitch = (300 - 90 * w) * (0.9 + Math.random() * 0.2);
+    var gain = 0.05 + 0.055 * w;
+
+    var o = actx.createOscillator();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(pitch, at);
+    o.frequency.exponentialRampToValueAtTime(pitch * 0.5, at + 0.028);
+    var og = actx.createGain();
+    og.gain.setValueAtTime(0.0001, at);
+    og.gain.exponentialRampToValueAtTime(gain, at + 0.002);
+    og.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+    o.connect(og); og.connect(bodyBus);
+    o.start(at); o.stop(at + 0.07);
+
+    var s = actx.createBufferSource();
+    s.buffer = noiseBuf;
+    s.playbackRate.value = 0.85 + Math.random() * 0.4;
+    var sg = actx.createGain();
+    sg.gain.setValueAtTime(gain * 0.3, at);
+    sg.gain.exponentialRampToValueAtTime(0.0001, at + 0.014);
+    s.connect(sg); sg.connect(edgeBus);
+    s.start(at); s.stop(at + 0.03);
+  }
+
+  /* ---------- one flap cell ---------- */
+  function Flap(size, drum){
+    var el = document.createElement("span");
+    el.className = "cell " + size;
+    el.innerHTML =
+      '<span class="half top"><b class="g"> </b></span>' +
+      '<span class="half bot"><b class="g"> </b></span>' +
+      '<span class="flap front"><b class="g"> </b></span>' +
+      '<span class="flap back"><b class="g"> </b></span>';
+    this.el = el;
+    this.front = el.querySelector(".front");
+    this.back = el.querySelector(".back");
+    this.gTop = el.querySelector(".top .g");
+    this.gBot = el.querySelector(".bot .g");
+    this.gFront = el.querySelector(".front .g");
+    this.gBack = el.querySelector(".back .g");
+    this.base = drum || DRUM;
+    this.drum = this.base.split("");
+    this.cur = " ";
+    this.target = " ";
+    this.next = " ";
+    this.t0 = 0;          // when the current flap started falling; 0 = seated
+    this.dur = TICK;
+    this.cap = TRAVEL;
+    this.startAt = 0;     // stagger gate, only honoured while seated
+    this.queued = false;
+    this.lastA = 0;       // last written angles, so we skip redundant writes
+    this.lastB = 90;
+  }
+
+  Flap.prototype.pick = function(){
+    if(REDUCED) return this.target;
+    var d = this.drum;
+    var i = d.indexOf(this.cur);
+    if(i < 0){ d = this.drum = this.base.split(""); this.cur = " "; i = 0; }
+
+    var t = d.indexOf(this.target);
+    if(t < 0){                                  // character not on this drum yet
+      if(d.length > 70){                        // keep dynamic drums from bloating
+        d = this.drum = this.base.split("");
+        i = d.indexOf(this.cur);
+        if(i < 0){ this.cur = " "; i = 0; }
+      }
+      d.splice(i + 1 + Math.floor(Math.random() * 5), 0, this.target);
+      i = d.indexOf(this.cur);
+      t = d.indexOf(this.target);
+    }
+
+    var len = d.length;
+    if((t - i + len) % len > this.cap){
+      return d[((t - this.cap + 1) % len + len) % len];   // skip, then run it out
+    }
+    return d[(i + 1) % len];
+  };
+
+  Flap.prototype.set = function(ch, delay){
+    this.target = (ch === undefined || ch === null || ch === "") ? " " : ch;
+    if(this.cur === this.target && this.t0 === 0) return;
+    // a fresh run length each time, so cells don't all settle on the same flap
+    this.cap = TRAVEL + Math.floor(Math.random() * 4);
+    this.startAt = performance.now() + (delay || 0);
+    wake(this);
+  };
+
+  Flap.prototype.advance = function(now){
+    if(this.t0 === 0 && now < this.startAt) return 0;
+    var flips = 0;
+    var guard = 0;
+    while(guard++ < 6){
+      if(this.t0 === 0){
+        if(this.cur === this.target){
+          this.pose(0, 90);   // seat the drum in its canonical rest pose
+          this.queued = false;
+          return flips;
+        }
+        this.begin(now);
+        flips++;
+        if(REDUCED){ this.commit(); continue; }
+      }
+      var t = (now - this.t0) / this.dur;
+      if(t >= 1){ this.commit(); continue; }
+      this.paint(t > 0 ? t : 0);
+      return flips;
+    }
+    return flips;
+  };
+
+  Flap.prototype.begin = function(now){
+    this.next = this.pick();
+    this.gTop.textContent = this.next;
+    this.gBack.textContent = this.next;
+    this.t0 = now;
+    // Every flap gets its own slightly different fall time. With one shared
+    // duration the whole board stays phase-locked and every cell commits on the
+    // same frame, which is what produced the periodic stalls. Real drums are
+    // never that well matched anyway.
+    this.dur = TICK * (0.86 + Math.random() * 0.28);
+    this.pose(0, 90);   // reseat before the new flap falls
+  };
+
+  Flap.prototype.commit = function(){
+    this.cur = this.next;
+    this.gFront.textContent = this.cur;
+    this.gBot.textContent = this.cur;
+    this.t0 = 0;
+  };
+
+  // First half: the flap accelerates under its own weight. Second half: it
+  // decelerates into the stop. Linear rotation is what makes CSS flip clocks
+  // look like paper instead of metal.
+  Flap.prototype.paint = function(t){
+    if(t < 0.5){
+      var x = t * 2;
+      this.pose(-90 * x * x, 90);
+    } else {
+      var k = 2 - t * 2;
+      this.pose(-90, 90 * k * k * k);
+    }
+  };
+
+  // Only the half that is actually turning gets written, and only when the
+  // rounded angle changes: one style write per cell per frame in practice.
+  Flap.prototype.pose = function(a, b){
+    a = a | 0; b = b | 0;
+    if(a !== this.lastA){
+      this.front.style.transform = "rotateX(" + a + "deg)";
+      this.lastA = a;
+    }
+    if(b !== this.lastB){
+      this.back.style.transform = "rotateX(" + b + "deg)";
+      this.lastB = b;
+    }
+  };
+
+  /* ---------- a row of cells ---------- */
+  function Line(n, size, mount, drum){
+    this.n = n;
+    this.cells = [];
+    var host = mount || document.createElement("div");
+    if(!mount) host.className = "line";
+    for(var i = 0; i < n; i++){
+      var f = new Flap(size, drum);
+      this.cells.push(f);
+      host.appendChild(f.el);
+    }
+    this.el = host;
+  }
+
+  Line.prototype.write = function(text, opts){
+    opts = opts || {};
+    var stagger = opts.stagger === undefined ? 16 : opts.stagger;
+    var jitter = opts.jitter === undefined ? 90 : opts.jitter;
+    var base = opts.base || 0;
+    var chars = String(text === undefined || text === null ? "" : text).split("");
+    var lead = 0;
+    if(opts.center && this.n > chars.length) lead = Math.floor((this.n - chars.length) / 2);
+
+    for(var i = 0; i < this.n; i++){
+      var ch = chars[i - lead];
+      if(ch === undefined) ch = " ";
+      this.cells[i].set(ch, REDUCED ? 0 : base + i * stagger + Math.random() * jitter);
+    }
+  };
+
+  /* ---------- build the board ---------- */
+  // Real Solari columns carry different drums — the time column only ever needs
+  // digits, so it is a 13-flap drum, not a 50-flap one. Shorter travel, fewer
+  // flips per update, and it is how the actual hardware is built.
+  var NUMS = " 0123456789:.";
+
+  var COLS = [
+    { key:"time",   n:5,  head:"時間 Time",        drum:NUMS },
+    { key:"body",   n:13, head:"內容 Destination", drum:DRUM },
+    { key:"status", n:8,  head:"狀態 Status",      drum:DRUM }
+  ];
+  var PER_BLOCK = 8;                       // rows in each of the two blocks
+  var BLOCKS = ["gridA", "gridB"];
+
+  function div(cls, text){
+    var d = document.createElement("div");
+    d.className = cls;
+    if(text !== undefined) d.textContent = text;
+    return d;
+  }
+
+  // rows[] is flat and 16 long; row.slot is its position within its block, which
+  // is what the cascade beats on so both blocks sweep top-down together.
+  var rows = [];
+  BLOCKS.forEach(function(id, b){
+    var grid = document.getElementById(id);
+    grid.appendChild(div("colhead", ""));
+    COLS.forEach(function(c){ grid.appendChild(div("colhead", c.head)); });
+
+    for(var r = 0; r < PER_BLOCK; r++){
+      var lampCell = div("rowlamp");
+      var lamp = document.createElement("span");
+      lamp.className = "lamp idle";
+      lampCell.appendChild(lamp);
+      grid.appendChild(lampCell);
+
+      var rowObj = { lamp: lamp, lines: {}, slot: r, block: b };
+      for(var c = 0; c < COLS.length; c++){
+        var host = div("line");
+        grid.appendChild(host);
+        rowObj.lines[COLS[c].key] = new Line(COLS[c].n, "md", host, COLS[c].drum);
+      }
+      rows.push(rowObj);
+    }
+  });
+
+  var marquee = new Line(14, "lg", document.getElementById("marquee"));
+  var subline = new Line(28, "sm", document.getElementById("subline"));
+  var clock = new Line(8, "sm", document.getElementById("clock"), NUMS);
+
+  /* ---------- content channels ---------- */
+  var CHANNELS = {
+    flights:{
+      marquee:"DEPARTURES",
+      sub:"TAOYUAN INTL · TERMINAL 2",
+      rows:[
+        ["08:40","TOKYO HND","ON TIME","ok"],
+        ["09:15","SINGAPORE","BOARDING","live"],
+        ["10:05","SEOUL ICN","GATE C7","idle"],
+        ["11:30","OSAKA KIX","DELAYED","alert"],
+        ["12:00","MANILA MNL","ON TIME","ok"],
+        ["12:45","BANGKOK BKK","GATE A3","idle"],
+        ["13:10","HO CHI MINH","ON TIME","ok"],
+        ["13:55","JAKARTA CGK","CHECK IN","live"],
+        ["14:20","HONG KONG","ON TIME","ok"],
+        ["15:05","SHANGHAI PVG","BOARDING","live"],
+        ["15:40","KUALA LUMPUR","GATE B9","idle"],
+        ["16:15","SYDNEY SYD","DELAYED","alert"],
+        ["17:00","LOS ANGELES","ON TIME","ok"],
+        ["17:30","VANCOUVER","GATE D1","idle"],
+        ["18:05","FRANKFURT","ON TIME","ok"],
+        ["18:50","AMSTERDAM","CHECK IN","live"]
+      ]
+    },
+    schedule:{
+      marquee:"TODAY",
+      sub:"WEDNESDAY · 26 AUGUST",
+      rows:[
+        ["08:30","STANDUP","ROOM 2","idle"],
+        ["09:00","DESIGN REVIEW","ROOM 4","idle"],
+        ["10:00","ONE ON ONE","ONLINE","idle"],
+        ["11:00","CLIENT CALL","NOW","live"],
+        ["11:45","LUNCH","CANTEEN","ok"],
+        ["13:00","SPRINT PLAN","ROOM 4","idle"],
+        ["14:00","BUILD DEMO","STUDIO","idle"],
+        ["15:00","DEEP WORK","FOCUS","ok"],
+        ["15:45","CODE REVIEW","ONLINE","idle"],
+        ["16:30","VENDOR SYNC","ROOM 1","idle"],
+        ["17:00","RETRO","ROOM 4","idle"],
+        ["17:45","TRAINING","OPTIONAL","ok"],
+        ["18:30","COMMUTE","CLEAR","ok"],
+        ["19:15","DINNER","HOME","ok"],
+        ["20:00","READING","HOME","ok"],
+        ["21:30","SHUTDOWN","DONE","idle"]
+      ]
+    },
+    ops:{
+      marquee:"SYSTEMS",
+      sub:"PRODUCTION · AP-NORTHEAST-1",
+      rows:[
+        ["99.98","API GATEWAY","HEALTHY","ok"],
+        ["0.12","DATABASE","DEGRADED","alert"],
+        ["04:12","LAST DEPLOY","SHIPPED","idle"],
+        ["3","OPEN TICKETS","REVIEW","live"],
+        ["128","EDGE NODES","ONLINE","ok"],
+        ["99.90","CDN","HEALTHY","ok"],
+        ["0.04","CACHE","HEALTHY","ok"],
+        ["17","BUILD QUEUE","RUNNING","live"],
+        ["99.95","AUTH SERVICE","HEALTHY","ok"],
+        ["1.80","SEARCH INDEX","SLOW","alert"],
+        ["06:40","NIGHTLY JOB","DONE","idle"],
+        ["0","ALERTS","CLEAR","ok"],
+        ["64","WORKERS","ONLINE","ok"],
+        ["99.99","OBJECT STORE","HEALTHY","ok"],
+        ["0.09","QUEUE LAG","HEALTHY","ok"],
+        ["2","PENDING PRS","REVIEW","live"]
+      ]
+    },
+    zh:{
+      marquee:"翻頁看板",
+      sub:"中文字元也能上板 · 混排測試",
+      rows:[
+        ["週三","設計評審","進行中","live"],
+        ["10:05","第二版排程","待確認","idle"],
+        ["延誤","資料串接","尚未接","alert"],
+        ["完成","第一版骨架","已交付","ok"],
+        ["14:00","全螢幕模式","已完成","ok"],
+        ["15:30","中文字元","正常","ok"],
+        ["16:00","效能量測","已完成","ok"],
+        ["17:00","翻頁聲調校","待回饋","live"],
+        ["週四","欄位確認","等回覆","live"],
+        ["09:00","資料來源","未定","idle"],
+        ["11:00","版面定稿","未定","idle"],
+        ["13:00","上線演練","未排","idle"],
+        ["週五","正式部署","未排","idle"],
+        ["備援","備援方案","未寫","alert"],
+        ["監控","監控告警","未接","alert"],
+        ["文件","交接文件","未寫","alert"]
+      ]
+    }
+  };
+
+  function pad2(x){ return String(x).length < 2 ? "0" + x : String(x); }
+
+  function stampNow(){
+    var d = new Date();
+    document.getElementById("stamp").textContent =
+      "LAST FLIP " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+  }
+
+  function clearChannelState(){
+    var btns = document.querySelectorAll(".chan");
+    for(var i = 0; i < btns.length; i++) btns[i].setAttribute("aria-pressed", "false");
+  }
+
+  function show(key){
+    var ch = CHANNELS[key];
+    if(!ch) return;
+    // Rows depart one after another rather than all at once. A real board reads
+    // top-down like this, and it keeps far fewer flaps in flight at any instant.
+    // One row per beat, top to bottom. Within a row the three columns share a
+    // single continuous sweep, so a row departs as one gesture rather than as
+    // three separate columns — that is what makes it read row-by-row.
+    var s = BEAT * 0.045;
+    var jit = BEAT * 0.3;
+
+    marquee.write(ch.marquee, { center:true, stagger:BEAT * 0.3, jitter:jit });
+    subline.write(ch.sub, { center:true, stagger:BEAT * 0.12, jitter:jit, base:BEAT });
+
+    // Both blocks sweep top-down together, one row per beat. The right block
+    // trails by a third of a beat so the two halves don't move in lockstep —
+    // it reads better and halves how many flaps are in flight at any instant.
+    rows.forEach(function(row, i){
+      var r = ch.rows[i];
+      if(!r) r = ["", "", "", "idle"];
+      var base = BEAT * (2 + row.slot) + (row.block ? BEAT * 0.34 : 0);
+      row.lines.time.write(r[0],   { stagger:s, jitter:jit, base:base });
+      row.lines.body.write(r[1],   { stagger:s, jitter:jit, base:base + 5 * s });
+      row.lines.status.write(r[2], { stagger:s, jitter:jit, base:base + 18 * s });
+      row.lamp.className = "lamp " + r[3];
+    });
+    clearChannelState();
+    var btn = document.querySelector('.chan[data-ch="' + key + '"]');
+    if(btn) btn.setAttribute("aria-pressed", "true");
+    stampNow();
+  }
+
+  /* ---------- clock ---------- */
+  function tickClock(){
+    var d = new Date();
+    clock.write(pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()), { stagger:0, jitter:0 });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  /* ---------- controls ---------- */
+  var chanBtns = document.querySelectorAll(".chan");
+  for(var b = 0; b < chanBtns.length; b++){
+    chanBtns[b].addEventListener("click", function(){
+      initAudio();
+      show(this.getAttribute("data-ch"));
+    });
+  }
+
+  var msg = document.getElementById("msg");
+  function sendMsg(){
+    var v = msg.value.trim();
+    if(!v) return;
+    if(!/[^\x00-\x7F]/.test(v)) v = v.toUpperCase();
+    initAudio();
+    marquee.write(v, { center:true, stagger:24, jitter:120 });
+    subline.write("CUSTOM MESSAGE", { center:true, stagger:10, jitter:150 });
+    clearChannelState();
+    stampNow();
+  }
+  document.getElementById("sendBtn").addEventListener("click", sendMsg);
+  msg.addEventListener("keydown", function(e){ if(e.key === "Enter") sendMsg(); });
+
+  var speed = document.getElementById("speed");
+  var speedVal = document.getElementById("speedVal");
+  speed.addEventListener("input", function(){
+    TICK = Number(speed.value);
+    speedVal.textContent = TICK + " ms";
+  });
+
+  var travel = document.getElementById("travel");
+  var travelVal = document.getElementById("travelVal");
+  travel.addEventListener("input", function(){
+    TRAVEL = Number(travel.value);
+    travelVal.textContent = TRAVEL + " 頁";
+  });
+
+  var beat = document.getElementById("beat");
+  var beatVal = document.getElementById("beatVal");
+  beat.addEventListener("input", function(){
+    BEAT = Number(beat.value);
+    beatVal.textContent = BEAT + " ms";
+  });
+
+  var soundBtn = document.getElementById("soundBtn");
+  soundBtn.addEventListener("click", function(){
+    initAudio();
+    if(actx && actx.state === "suspended") actx.resume();
+    soundOn = !soundOn;
+    soundBtn.setAttribute("aria-pressed", String(soundOn));
+    soundBtn.textContent = "翻頁聲 " + (soundOn ? "On" : "Off");
+  });
+
+  var autoBtn = document.getElementById("autoBtn");
+  var autoTimer = null;
+  var order = ["flights", "schedule", "ops", "zh"];
+  var idx = 0;
+  autoBtn.addEventListener("click", function(){
+    if(autoTimer){
+      clearInterval(autoTimer);
+      autoTimer = null;
+      autoBtn.setAttribute("aria-pressed", "false");
+      autoBtn.textContent = "自動輪播 Off";
+    } else {
+      initAudio();
+      autoTimer = setInterval(function(){
+        idx = (idx + 1) % order.length;
+        show(order[idx]);
+      }, 9000);
+      autoBtn.setAttribute("aria-pressed", "true");
+      autoBtn.textContent = "自動輪播 On";
+    }
+  });
+
+  /* ---------- wall mode ----------
+     The real Fullscreen API is tried first, but an embedded page can be denied
+     it. The CSS class does the layout work either way, so the board still fills
+     the viewport when the request is refused. */
+  var fsBtn = document.getElementById("fsBtn");
+  var hint = document.getElementById("fshint");
+  var hintTimer = 0;
+  var wall = false;
+
+  function showHint(){
+    if(!wall) return;
+    hint.classList.add("show");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(function(){ hint.classList.remove("show"); }, 2600);
+  }
+
+  function setWall(on){
+    wall = on;
+    document.body.classList.toggle("fs", on);
+    fsBtn.textContent = on ? "離開全螢幕" : "全螢幕";
+    if(on) showHint(); else hint.classList.remove("show");
+    refit(true);
+  }
+
+  function enterWall(){
+    setWall(true);
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if(req){
+      try{
+        var p = req.call(el);
+        if(p && p.catch) p.catch(function(){});   // denied: CSS mode already on
+      }catch(e){}
+    }
+  }
+
+  function exitWall(){
+    setWall(false);
+    if(document.fullscreenElement && document.exitFullscreen){
+      try{ document.exitFullscreen(); }catch(e){}
+    } else if(document.webkitFullscreenElement && document.webkitExitFullscreen){
+      try{ document.webkitExitFullscreen(); }catch(e){}
+    }
+  }
+
+  fsBtn.addEventListener("click", function(){ wall ? exitWall() : enterWall(); });
+
+  document.addEventListener("fullscreenchange", function(){
+    // leaving via the browser's own Esc must drop the CSS mode too
+    if(!document.fullscreenElement && wall) setWall(false);
+  });
+  document.addEventListener("mousemove", showHint);
+
+  document.addEventListener("keydown", function(e){
+    var t = e.target;
+    if(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    if(e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if(e.key === "Escape" && wall){ exitWall(); return; }
+    if(e.key === "f" || e.key === "F"){ wall ? exitWall() : enterWall(); return; }
+    if(e.key === " "){ e.preventDefault(); autoBtn.click(); return; }
+    if(e.key >= "1" && e.key <= "4"){
+      var b = document.querySelectorAll(".chan")[Number(e.key) - 1];
+      if(b) b.click();
+    }
+  });
+
+  /* ---------- fit the board to whatever space is left ----------
+     The flap unit is linear in --u, but the paddings around it are not, so one
+     ratio is not exact. A few measure-and-scale passes converge, and this only
+     runs on load / resize / entering wall mode — never per frame. */
+  var stageEl = document.querySelector(".stage");
+  var scrollEl = document.querySelector(".gridscroll");
+  var blocksEl = document.querySelector(".blocks");
+  var marqEl = document.getElementById("marquee");
+  var U_MIN = 6, U_MAX = 48;
+  var curU = 19;
+
+  // A centred flex container clips overflow at BOTH ends, so scrollHeight
+  // under-reports it. Sum the children instead — exact, and it runs rarely.
+  function stageUsed(){
+    var cs = getComputedStyle(stageEl);
+    var h = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    var gap = parseFloat(cs.rowGap) || 0;
+    var kids = stageEl.children;
+    for(var i = 0; i < kids.length; i++){
+      var ks = getComputedStyle(kids[i]);
+      h += kids[i].getBoundingClientRect().height +
+           (parseFloat(ks.marginTop) || 0) + (parseFloat(ks.marginBottom) || 0);
+      if(i) h += gap;
+    }
+    return h;
+  }
+
+  function fit(){
+    // Never re-fit mid-flip: each pass forces a synchronous layout, and doing
+    // that while a few hundred flaps are turning is exactly the stall this
+    // whole engine exists to avoid. Measuring a moving board is pointless too.
+    if(active.length){ fitPending = setTimeout(fit, 200); return; }
+
+    var root = document.documentElement;
+    for(var pass = 0; pass < 8; pass++){
+      // writing --u restyles every flap in the tree, so never write a value
+      // that is already set — otherwise settling triggers a full restyle
+      var val = curU.toFixed(2) + "px";
+      if(root.style.getPropertyValue("--u") !== val) root.style.setProperty("--u", val);
+
+      // read after the write — a forced reflow, but only a handful of times
+      var availH = stageEl.clientHeight;
+      var availW = scrollEl.clientWidth;
+      var usedH = stageUsed();
+      var usedW = Math.max(blocksEl.getBoundingClientRect().width,
+                           marqEl.getBoundingClientRect().width);
+
+      if(!availH || !availW || !usedH || !usedW) return;
+
+      var k = Math.min(availH / usedH, availW / usedW);
+      // k must be >= 1 to actually fit; anything under overflows and gets clipped
+      if(k >= 1 && k < 1.02) break;
+
+      // ease toward the target and leave a hair of margin so it never clips
+      var next = curU * (k < 1 ? k * 0.99 : Math.min(k, 1.3));
+      next = Math.max(U_MIN, Math.min(U_MAX, next));
+      if(Math.abs(next - curU) < 0.04) break;
+      curU = next;
+    }
+  }
+
+  var fitPending = 0, lastW = 0, lastH = 0;
+
+  // The observer fires for plenty of reasons that are not a resize. Only a real
+  // change in viewport size should cost us a fit.
+  function refit(force){
+    if(force !== true && innerWidth === lastW && innerHeight === lastH) return;
+    lastW = innerWidth;
+    lastH = innerHeight;
+    clearTimeout(fitPending);
+    fitPending = setTimeout(fit, 60);
+  }
+
+  window.addEventListener("resize", function(){ refit(); });
+  window.addEventListener("orientationchange", function(){ refit(); });
+  if(window.ResizeObserver){
+    // the html box tracks the viewport, so this catches resizes that never
+    // dispatch a window resize event (embedded frames, emulated viewports)
+    try{ new ResizeObserver(function(){ refit(); }).observe(document.documentElement); }catch(e){}
+  }
+
+  /* ---------- opening sequence ---------- */
+  fit();
+  requestAnimationFrame(fit);
+  setTimeout(function(){ show("flights"); fit(); }, 400);
+  setTimeout(fit, 1200);            // once webfonts have settled
+})();
+</script>
