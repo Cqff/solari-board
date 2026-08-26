@@ -1,16 +1,21 @@
 name: 班表更新
 
-# 桃園機場的即時航班開放資料每 5 分鐘更新一次，這裡每 10 分鐘抓一次，轉成
-# data/timetable.json 給看板讀。
+# 桃園機場的即時航班開放資料每 5 分鐘更新一次，這支每 10 分鐘抓一次，轉成
+# data/timetable.json commit 回 repo 給 GitHub Pages 上的看板讀。
+#
+# 本地端跑看板的話用 tools/serve.mjs 就好，不需要這支。
 #
 # GitHub 的排程是「盡力而為」的：尖峰時段常常延後、偶爾整輪跳過，所以實際間隔
 # 可能是 10 到 30 分鐘。看板本身不依賴這個檔案 —— 抓不到就用內建的示範班表。
 #
 # 排程只會在預設分支上跑，所以這支要合進 main 之後才會開始動。
 
+# 排程預設是關的 —— 現在是本地端用 tools/serve.mjs 在跑（見 README），雲端再每
+# 10 分鐘 commit 同一個檔案只會跟本機打架。要改回雲端跑：把下面兩行的註解拿掉，
+# 並把 .gitignore 裡的 data/timetable.json 移掉。
 on:
-  schedule:
-    - cron: "*/10 * * * *"
+  # schedule:
+  #   - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:

@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# 本地跑 tools/serve.mjs 產生的，不進版控
+data/timetable.json
