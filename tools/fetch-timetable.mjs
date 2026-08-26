@@ -10,9 +10,9 @@ import { fetchTimetable, writeTimetable, FetchFailed, SOURCE } from "./timetable
 
 const src = process.argv[2] || SOURCE;
 
-let rows;
+let table;
 try{
-  rows = await fetchTimetable(src);
+  table = await fetchTimetable(src);
 }catch(err){
   console.error(err.message);
   // 對方掛掉或網路不順不是這支程式壞了，用 EX_TEMPFAIL 回報，讓呼叫端分得出
@@ -20,7 +20,7 @@ try{
   process.exit(err instanceof FetchFailed ? 75 : 1);
 }
 
-const changed = await writeTimetable(rows);
-console.log(changed
-  ? "寫入 data/timetable.json：" + rows.length + " 筆，" + rows[0][0] + " – " + rows[rows.length - 1][0]
-  : "班表沒變（" + rows.length + " 筆），不動檔案");
+const changed = await writeTimetable(table);
+const tally = "出發 " + table.departures.length + " 筆、抵達 " + table.arrivals.length + " 筆";
+console.log(changed ? "寫入 data/timetable.json：" + tally
+                    : "班表沒變（" + tally + "），不動檔案");

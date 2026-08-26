@@ -135,6 +135,7 @@ function hhmm(v){
 }
 
 const isDeparture = v => /出發|離境|出境|depart/i.test(v) || /^\s*d\s*$/i.test(v);
+const isArrival   = v => /抵達|到達|入境|arriv/i.test(v) || /^\s*a\s*$/i.test(v);
 const isCancelled = v => /取消|cancel/i.test(v);
 
 function tidy(name, n){
@@ -153,13 +154,16 @@ function convert(text){
   const get = (row, key) => at[key] === undefined ? "" : (row[at[key]] || "").trim();
 
   const seen = new Set();
-  const out = [];
+  const out = { departures: [], arrivals: [] };
 
   for(const row of table.slice(1)){
-    if(!isDeparture(get(row, "kind"))) continue;
+    const kind = get(row, "kind");
+    const bucket = isDeparture(kind) ? out.departures : isArrival(kind) ? out.arrivals : null;
+    if(!bucket) continue;
     if(isCancelled(get(row, "status"))) continue;
 
-    // 誤點的話，會動的是預計時間 —— 看板是拿這個時間倒數的，所以有就用它
+    // 誤點的話，會動的是預計時間 —— 看板是拿這個時間倒數的（抵達也一樣），
+    // 所以有就用它
     const time = hhmm(get(row, "est")) || hhmm(get(row, "sched"));
     if(!time) continue;
 
@@ -174,26 +178,34 @@ function convert(text){
                  tidy(get(row, "destCode"), DEST_N);
     if(!dest) continue;
 
-    const key = time + flight;
+    const key = kind + time + flight;
     if(seen.has(key)) continue;      // 同一班在資料裡出現兩次（共掛班號）只留一筆
     seen.add(key);
-    out.push([time, flight, dest]);
+    bucket.push([time, flight, dest]);
   }
 
-  out.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-  return out.slice(0, MAX_ROWS);
+  const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  return {
+    departures: out.departures.sort(byTime).slice(0, MAX_ROWS),
+    arrivals:   out.arrivals.sort(byTime).slice(0, MAX_ROWS)
+  };
 }
 
 /* ---------- 寫檔 ---------- */
 // 一行一筆，diff 才看得懂 —— 這個檔案一天會被改上百次。
 
-function render(rows){
+function list(name, rows){
+  return '  "' + name + '": [\n' +
+    rows.map(r => "    " + JSON.stringify(r)).join(",\n") +
+    "\n  ]";
+}
+
+function render(t){
   return "{\n" +
     '  "generated": ' + JSON.stringify(new Date().toISOString()) + ",\n" +
     '  "source": ' + JSON.stringify(SOURCE) + ",\n" +
-    '  "rows": [\n' +
-    rows.map(r => "    " + JSON.stringify(r)).join(",\n") +
-    "\n  ]\n}\n";
+    list("departures", t.departures) + ",\n" +
+    list("arrivals", t.arrivals) + "\n}\n";
 }
 
 /* ---------- 對外的兩個動作 ---------- */
@@ -209,24 +221,28 @@ export async function fetchTimetable(src = SOURCE){
     throw new FetchFailed("抓不到 " + src + "：" + err.message);
   }
 
-  const rows = convert(decode(raw));
+  const t = convert(decode(raw));
+  const total = t.departures.length + t.arrivals.length;
 
   // 這道關卡是防遠端回壞資料用的；拿本地檔案測欄位對照時不擋
-  if(/^https?:/i.test(src) && rows.length < MIN_ROWS){
-    throw new Error("只轉出 " + rows.length + " 筆（至少要 " + MIN_ROWS + " 筆），" +
+  if(/^https?:/i.test(src) && total < MIN_ROWS){
+    throw new Error("只轉出 " + total + " 筆（至少要 " + MIN_ROWS + " 筆），" +
                     "當作是壞資料，不覆蓋現有的班表");
   }
-  return rows;
+  return t;
 }
 
 // 寫檔。班次沒變就不動檔案 —— generated 的時戳會讓每次執行都看起來有差異
-export async function writeTimetable(rows){
+export async function writeTimetable(t){
   let before = null;
-  try{ before = JSON.parse(await readFile(OUT, "utf8")).rows; }catch{}
-  if(before && JSON.stringify(before) === JSON.stringify(rows)) return false;
+  try{
+    const old = JSON.parse(await readFile(OUT, "utf8"));
+    before = JSON.stringify([old.departures, old.arrivals]);
+  }catch{}
+  if(before && before === JSON.stringify([t.departures, t.arrivals])) return false;
 
   await mkdir(dirname(OUT), { recursive: true });
-  await writeFile(OUT, render(rows), "utf8");
+  await writeFile(OUT, render(t), "utf8");
   return true;
 }
 
