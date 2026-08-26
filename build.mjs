@@ -26,7 +26,7 @@ const out = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="機械翻頁看板 — TPE 出境，現在往後四小時，單區 10 行。">
+<meta name="description" content="機械翻頁看板 — TPE 出境，前 1 小時到後 4 小時，每 25 秒翻頁。">
 <meta name="color-scheme" content="dark">
 ${head}
 </head>
