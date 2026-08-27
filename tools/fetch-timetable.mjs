@@ -20,20 +20,47 @@ const src = argv.filter((a, i) => !a.startsWith("--") && !(findAt !== -1 && i ==
             || SOURCE;
 const wantDates = argv.includes("--dates");
 
-if(wantDates){
-  // 回答「這份資料是不是舊的」：把 CSV 裡表訂日期的分布直接數出來
+// 不用 process.exit()：Node 在 Windows 上會在連線還沒收乾淨時炸出 libuv 的
+// assertion（Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)）。包成
+// main() 用 return 收尾，離開碼交給 process.exitCode。
+await main();
+
+async function main(){
+  if(wantDates) return await showDates();
+  if(findAt !== -1) return await showFind();
+
+  let table;
+  try{
+    table = await fetchTimetable(src);
+  }catch(err){
+    console.error(err.message);
+    // 對方掛掉或網路不順不是這支程式壞了，用 EX_TEMPFAIL 回報，讓呼叫端分得出
+    // 「這輪跳過」和「真的壞了」
+    process.exitCode = err instanceof FetchFailed ? 75 : 1;
+    return;
+  }
+
+  const changed = await writeTimetable(table);
+  const tally = "出發 " + table.departures.length + " 筆、抵達 " + table.arrivals.length + " 筆";
+  console.log(changed ? "寫入 data/timetable.json：" + tally
+                      : "班表沒變（" + tally + "），不動檔案");
+}
+
+// 回答「這份資料是不是舊的」：把 CSV 裡表訂日期的分布直接數出來
+async function showDates(){
   let tally;
   try{
     tally = await dateTally(src);
   }catch(err){
     console.error(err.message);
-    process.exit(err instanceof FetchFailed ? 75 : 1);
+    process.exitCode = err instanceof FetchFailed ? 75 : 1;
+    return;
   }
   console.log(`來源：${src}`);
   if(!tally.column){
     console.log("這份 CSV 找不到日期欄位（表訂日期／預計日期），沒辦法判斷新舊。");
     console.log("表頭：" + tally.header.map(h => h.trim()).join(" | "));
-    process.exit(0);
+    return;
   }
   console.log(`日期欄「${tally.column}」共 ${tally.total} 列：\n`);
   tally.days.forEach(([day, n]) => console.log(`  ${day || "(空白)"}  ${n} 列`));
@@ -41,25 +68,27 @@ if(wantDates){
   console.log(tally.days.some(d => d[0] === tally.today)
     ? "→ 資料裡有今天的班次，這份是即時資料。"
     : "→ 資料裡沒有今天的班次 —— 這份不是即時資料，把上面整段貼給我。");
-  process.exit(0);
 }
 
-if(findAt !== -1){
+// 板上那一列到底哪來的：把原始 CSV 裡對得上的列一欄一欄印出來
+async function showFind(){
   if(!needle){
     console.error("--find 後面要給班號或關鍵字，例如 --find JX721");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   let found;
   try{
     found = await findRaw(src, needle);
   }catch(err){
     console.error(err.message);
-    process.exit(err instanceof FetchFailed ? 75 : 1);
+    process.exitCode = err instanceof FetchFailed ? 75 : 1;
+    return;
   }
   console.log(`來源：${src}`);
   if(!found.rows.length){
     console.log(`原始 CSV 裡找不到「${needle}」—— 板上如果有這一列，那就是轉檔器的問題，把這句話貼給我。`);
-    process.exit(0);
+    return;
   }
   console.log(`原始 CSV 裡有 ${found.rows.length} 列對得上「${needle}」：\n`);
   found.rows.forEach((row, n) => {
@@ -70,20 +99,4 @@ if(findAt !== -1){
     });
     console.log("");
   });
-  process.exit(0);
 }
-
-let table;
-try{
-  table = await fetchTimetable(src);
-}catch(err){
-  console.error(err.message);
-  // 對方掛掉或網路不順不是這支程式壞了，用 EX_TEMPFAIL 回報，讓呼叫端分得出
-  // 「這輪跳過」和「真的壞了」
-  process.exit(err instanceof FetchFailed ? 75 : 1);
-}
-
-const changed = await writeTimetable(table);
-const tally = "出發 " + table.departures.length + " 筆、抵達 " + table.arrivals.length + " 筆";
-console.log(changed ? "寫入 data/timetable.json：" + tally
-                    : "班表沒變（" + tally + "），不動檔案");

@@ -20,6 +20,12 @@ const url = argv.find(a => !a.startsWith("--")) || SOURCE;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
+// 不用 process.exit()：Node 在 Windows 上會在連線還沒收乾淨時炸出 libuv 的
+// assertion（Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)）。用 return
+// 加 process.exitCode，讓它自己把 socket 收完再結束。
+await main();
+
+async function main(){
 console.log("測試：" + url + "\n");
 
 let res, body;
@@ -36,7 +42,8 @@ try{
 }catch(err){
   console.log("連不到：" + err.message);
   console.log("\n→ 這台機器到不了這個網址（防火牆、DNS、或對方直接斷線）。");
-  process.exit(1);
+  process.exitCode = 1;
+  return;
 }
 
 const text = new TextDecoder("utf-8").decode(body);
@@ -47,11 +54,15 @@ const blocked = /just a moment|cf-browser-verification|challenge-platform|attent
 if(res.status === 403 || blocked){
   console.log("\n→ 被擋下來了（看起來是 Cloudflare 的瀏覽器驗證）。");
   console.log("  純 Node 抓不到這種頁面，要嘛換來源，要嘛開真的瀏覽器去抓。");
-  process.exit(2);
+  console.log("  注意：Cloudflare 常常是間歇性的 —— 同一個網址上一次過、這一次被擋，");
+  console.log("  就表示它不適合當每幾分鐘抓一次的來源。");
+  process.exitCode = 2;
+  return;
 }
 if(!res.ok){
   console.log(`\n→ 對方回 ${res.status}，不是可用的來源。`);
-  process.exit(2);
+  process.exitCode = 2;
+  return;
 }
 
 // 內容裡有沒有航班的樣子：班號（兩碼英數 + 2~4 位數字）和 HH:MM
@@ -73,6 +84,7 @@ if(flights.length >= 10 && times.length >= 10){
 }
 
 if(sample) showSample(text);
+}
 
 /* 把表格的樣子印出來 —— 我看不到你機器上的網頁，要寫解析就得知道欄位怎麼排。
    輸出刻意壓得很小，方便直接貼。 */
