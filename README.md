@@ -219,7 +219,7 @@ var COLS = [
   { key:"flight", n:7,      head:"班機 Flight",        drum:DRUM },
   { key:"body",   n:13,     head:"目的地 Destination", drum:DRUM },
   { key:"status", n:9,      head:"狀態 Status",        drum:DRUM },
-  { key:"gate",   n:4,      head:"登機門 Gate",        drum:DRUM },
+  { key:"gate",   n:3,      head:"登機門 Gate",        drum:DRUM },
   { key:"also",   n:ALSO_N, head:"其他 Also",          drum:DRUM }
 ];
 var ROWS = 10;       // 板面行數，也是一頁幾班
