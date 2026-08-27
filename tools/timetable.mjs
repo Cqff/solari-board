@@ -390,6 +390,12 @@ export async function findRaw(src, needle){
   };
 }
 
+/* 前幾列長什麼樣子 —— 換來源時第一件要看的事，欄位怎麼排都不知道就寫不出對照。 */
+export async function peekRows(src, n = 3){
+  const table = parseCsv(decode(await grab(src)));
+  return { header: table[0], total: table.length - 1, rows: table.slice(1, 1 + n) };
+}
+
 /* 這份資料是哪幾天的 —— 「你是不是抓到三年前的資料」只能用資料本身回答。 */
 export async function dateTally(src){
   const table = parseCsv(decode(await grab(src)));

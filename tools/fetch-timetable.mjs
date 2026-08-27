@@ -4,6 +4,7 @@
 //   node tools/fetch-timetable.mjs some.csv         # 吃本地檔案，改欄位對照時測用
 //   node tools/fetch-timetable.mjs --find JX721     # 這個班次在原始 CSV 裡長怎樣
 //   node tools/fetch-timetable.mjs --dates          # 這份資料到底是哪幾天的
+//   node tools/fetch-timetable.mjs --head           # 前幾列長什麼樣子（換來源時用）
 //
 // --find 是拿來回答「板上這一列到底哪來的」：把原始 CSV 裡對得上的列一欄一欄印
 // 出來，就分得出是官方資料本來就這樣寫，還是我轉錯了。
@@ -11,7 +12,7 @@
 // 要一直更新的話用 tools/serve.mjs，不要拿這支去排 cron —— 那支會順便把看板
 // 服務起來，而且抓失敗不會整個死掉。
 
-import { fetchTimetable, writeTimetable, findRaw, dateTally, FetchFailed, SOURCE } from "./timetable.mjs";
+import { fetchTimetable, writeTimetable, findRaw, dateTally, peekRows, FetchFailed, SOURCE } from "./timetable.mjs";
 
 const argv = process.argv.slice(2);
 const findAt = argv.indexOf("--find");
@@ -19,6 +20,8 @@ const needle = findAt === -1 ? "" : argv[findAt + 1] || "";
 const src = argv.filter((a, i) => !a.startsWith("--") && !(findAt !== -1 && i === findAt + 1))[0]
             || SOURCE;
 const wantDates = argv.includes("--dates");
+const headAt = argv.indexOf("--head");
+const headN = headAt === -1 ? 0 : Math.max(1, Number(argv[headAt + 1]) || 3);
 
 // 不用 process.exit()：Node 在 Windows 上會在連線還沒收乾淨時炸出 libuv 的
 // assertion（Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)）。包成
@@ -26,6 +29,7 @@ const wantDates = argv.includes("--dates");
 await main();
 
 async function main(){
+  if(headN) return await showHead();
   if(wantDates) return await showDates();
   if(findAt !== -1) return await showFind();
 
@@ -44,6 +48,28 @@ async function main(){
   const tally = "出發 " + table.departures.length + " 筆、抵達 " + table.arrivals.length + " 筆";
   console.log(changed ? "寫入 data/timetable.json：" + tally
                       : "班表沒變（" + tally + "），不動檔案");
+}
+
+// 換來源時第一件事：這份 CSV 的前幾列到底長什麼樣子
+async function showHead(){
+  let peek;
+  try{
+    peek = await peekRows(src, headN);
+  }catch(err){
+    console.error(err.message);
+    process.exitCode = err instanceof FetchFailed ? 75 : 1;
+    return;
+  }
+  console.log(`來源：${src}`);
+  console.log(`共 ${peek.total} 列，以下是前 ${peek.rows.length} 列：\n`);
+  peek.rows.forEach((row, n) => {
+    console.log(`--- 第 ${n + 1} 列`);
+    peek.header.forEach((h, i) => {
+      const v = (row[i] || "").trim();
+      console.log(`  ${(h.trim() || "(第" + (i + 1) + "欄)")}: ${v || "(空白)"}`);
+    });
+    console.log("");
+  });
 }
 
 // 回答「這份資料是不是舊的」：把 CSV 裡表訂日期的分布直接數出來

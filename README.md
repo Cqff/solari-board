@@ -195,6 +195,7 @@ node tools/probe-source.mjs                 # 不給網址就測目前的來源
 node tools/fetch-timetable.mjs                 # 抓一次就結束，印出抓到幾筆或錯在哪
 node tools/fetch-timetable.mjs some.csv        # 吃本地 CSV，不連網
 node tools/fetch-timetable.mjs --dates         # 這份資料到底是哪幾天的
+node tools/fetch-timetable.mjs --head          # 前幾列長什麼樣子（換來源時用）
 node tools/fetch-timetable.mjs --find JX721    # 某個班次在原始 CSV 裡長什麼樣子
 ```
 
