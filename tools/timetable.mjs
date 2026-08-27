@@ -52,7 +52,11 @@ const FIELDS = {
   gate:     ["機門", "登機門", "gate"],
   aircraft: ["機型", "機種", "aircraft", "acType"],
   counter:  ["報到櫃台", "櫃台", "counter"],
-  terminal: ["航廈", "航廈別", "terminal"]
+  terminal: ["航廈", "航廈別", "terminal"],
+  // 定期班表（7869）用的欄位：一列代表一段期間內、某幾個星期會飛的班次
+  validFrom: ["有效起始日期"],
+  validTo:   ["有效終止日期"],
+  weekdays:  ["起飛或抵達的星期"]
 };
 const REQUIRED = ["kind", "number", "sched"];
 
@@ -414,14 +418,43 @@ export async function dateTally(src){
     const v = (row[at.i] || "").trim();
     count.set(v, (count.get(v) || 0) + 1);
   }
-  const t = new Date(tpeNowMs());
   return {
     header: table[0],
     column: at.name,
     total: table.length - 1,
     days: [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
-    today: t.getUTCFullYear() + "-" + pad2(t.getUTCMonth() + 1) + "-" + pad2(t.getUTCDate())
+    today: todayTpe()
   };
+}
+
+function todayTpe(){
+  const t = new Date(tpeNowMs());
+  return t.getUTCFullYear() + "-" + pad2(t.getUTCMonth() + 1) + "-" + pad2(t.getUTCDate());
+}
+
+/* 定期班表沒有「某一天」的欄位，只有有效區間和星期。所以要問的不是「資料是哪
+   一天的」，而是「今天落在幾筆的有效區間裡、其中幾筆今天這個星期有飛」。 */
+export async function validityTally(src){
+  const table = parseCsv(decode(await grab(src)));
+  const seen = table[0].map(norm);
+  const col = names => { for(const n of names){ const i = seen.indexOf(norm(n)); if(i !== -1) return i; } return -1; };
+  const from = col(FIELDS.validFrom), to = col(FIELDS.validTo), wk = col(FIELDS.weekdays);
+  if(from === -1 || to === -1) return null;
+
+  const today = todayTpe();
+  const dow = new Date(tpeNowMs()).getUTCDay() || 7;      // 1=一 … 7=日
+  let covering = 0, flyingToday = 0, maxTo = "", minFrom = "";
+
+  for(const row of table.slice(1)){
+    const a = (row[from] || "").trim(), b = (row[to] || "").trim();
+    if(a && (!minFrom || a < minFrom)) minFrom = a;
+    if(b && b > maxTo) maxTo = b;
+    if(!a || !b || a > today || b < today) continue;
+    covering++;
+    const week = (row[wk] || "").trim();
+    if(wk === -1 || week.includes(String(dow))) flyingToday++;
+  }
+  return { total: table.length - 1, today, dow, covering, flyingToday, minFrom, maxTo };
 }
 
 export { SOURCE, OUT };

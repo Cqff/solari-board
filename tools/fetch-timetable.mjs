@@ -12,7 +12,7 @@
 // 要一直更新的話用 tools/serve.mjs，不要拿這支去排 cron —— 那支會順便把看板
 // 服務起來，而且抓失敗不會整個死掉。
 
-import { fetchTimetable, writeTimetable, findRaw, dateTally, peekRows, FetchFailed, SOURCE } from "./timetable.mjs";
+import { fetchTimetable, writeTimetable, findRaw, dateTally, peekRows, validityTally, FetchFailed, SOURCE } from "./timetable.mjs";
 
 const argv = process.argv.slice(2);
 const findAt = argv.indexOf("--find");
@@ -84,6 +84,19 @@ async function showDates(){
   }
   console.log(`來源：${src}`);
   if(!tally.column){
+    // 定期班表沒有「某一天」，只有有效區間和星期 —— 換個問法
+    const v = await validityTally(src).catch(() => null);
+    if(v){
+      const week = "一二三四五六日"[v.dow - 1];
+      console.log(`這是定期班表（有效區間 + 星期），共 ${v.total} 列。`);
+      console.log(`  有效區間橫跨 ${v.minFrom} ~ ${v.maxTo}`);
+      console.log(`  今天（${v.today}，星期${week}）落在 ${v.covering} 筆的有效區間內`);
+      console.log(`  其中星期${week}有飛的：${v.flyingToday} 筆`);
+      console.log(v.flyingToday >= 50
+        ? "\n→ 這份涵蓋今天，可以當班表來源。"
+        : "\n→ 今天幾乎沒有班次 —— 這份沒有涵蓋今天，把上面整段貼給我。");
+      return;
+    }
     console.log("這份 CSV 找不到日期欄位（表訂日期／預計日期），沒辦法判斷新舊。");
     console.log("表頭：" + tally.header.map(h => h.trim()).join(" | "));
     return;
