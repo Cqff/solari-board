@@ -17,6 +17,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchTimetable, writeTimetable, FetchFailed, SOURCE, OUT } from "./timetable.mjs";
+import { isTdx } from "./tdx.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -26,22 +27,32 @@ function arg(name, fallback){
 }
 
 const PORT = Number(arg("port", process.env.PORT || 8080));
-const EVERY = Number(arg("every", 3)) * 60 * 1000;
 const SRC = arg("source", SOURCE);
+// TDX 是按次計費的免費額度，預設放寬到 30 分鐘（一天約 48 次）。看板的狀態是用
+// 時鐘算的，班表半小時舊一點不影響 —— 會退化的只有登機門和誤點的即時性。
+const EVERY = Number(arg("every", isTdx(SRC) ? 30 : 3)) * 60 * 1000;
 
 /* ---------- 定時更新 ---------- */
 
 const clock = () => new Date().toTimeString().slice(0, 8);
+let lastError = "";
 
 async function refresh(){
   try{
     const table = await fetchTimetable(SRC);
+    lastError = "";
     const changed = await writeTimetable(table);
     const tally = `出發 ${table.departures.length} 筆、抵達 ${table.arrivals.length} 筆`;
     console.log(changed ? `[${clock()}] 班表更新：${tally}`
                         : `[${clock()}] 班表沒變（${tally}）`);
   }catch(err){
-    // 抓不到就留著上一版 —— 看板寧可顯示舊班表也不要開天窗
+    // 抓不到就留著上一版 —— 看板寧可顯示舊班表也不要開天窗。
+    // 同樣的錯誤不要每輪洗一次版（例如金鑰沒設，會一直是同一句）
+    if(err.message === lastError){
+      console.warn(`[${clock()}] 同上（錯誤持續中）`);
+      return;
+    }
+    lastError = err.message;
     console.warn(`[${clock()}] ${err.message}` +
                  (err instanceof FetchFailed ? "，等下一輪" : ""));
     if(!existsSync(OUT)){
@@ -84,8 +95,10 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  const perDay = Math.round(1440 / (EVERY / 60000));
   console.log(`看板  http://localhost:${PORT}`);
-  console.log(`班表  每 ${EVERY / 60000} 分鐘更新一次`);
+  console.log(`班表  每 ${EVERY / 60000} 分鐘更新一次` +
+              (isTdx(SRC) ? `（一天約 ${perDay} 次呼叫，要低於你的 TDX 額度）` : ""));
   console.log(`來源  ${SRC}`);
   console.log("");
   refresh();

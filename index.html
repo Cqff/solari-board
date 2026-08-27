@@ -1122,8 +1122,9 @@ body.fs .fshint.show{ opacity:1; }
     return {
       pages: pages,
       rows: list.slice(p * ROWS, p * ROWS + ROWS),
-      label: b.table.length ? "TPE " + hhmm(now - b.back) + "-" + hhmm(now + b.ahead) +
-                              " · " + (p + 1) + " OF " + pages
+      // 副標只寫時間窗，不寫第幾頁 —— 頁碼對看的人沒有意義，拿掉之後時間也
+      // 正好落在正中間
+      label: b.table.length ? "TPE " + hhmm(now - b.back) + "-" + hhmm(now + b.ahead)
                             : "NO LIVE TIMETABLE"
     };
   }
