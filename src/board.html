@@ -164,6 +164,8 @@ body{
   column-gap:clamp(6px,calc(var(--u) * .5),14px);
   row-gap:clamp(5px,calc(var(--u) * .42),12px);
 }
+/* 版面塞不下的時候，最後一欄先收起來 —— 寧可少一欄也不要被裁掉半個字 */
+.board-grid.narrow .col-also{ display:none; }
 .colhead{
   font-family:var(--f-sign); font-size:9.5px; font-weight:500;
   letter-spacing:.20em; text-transform:uppercase; color:var(--ink-faint);
@@ -780,14 +782,17 @@ body.fs .fshint.show{ opacity:1; }
   // flips per update, and it is how the actual hardware is built.
   var NUMS = " 0123456789:.";
 
+  var ALSO_N = 18;              // 「其他」欄的格數，alsoText 要照這個裁
+
   var COLS = [
-    { key:"time",   n:5,  head:"時間 Time",          drum:NUMS },
-    { key:"flight", n:9,  head:"班機 Flight",        drum:DRUM },
-    { key:"body",   n:13, head:"目的地 Destination", drum:DRUM },
-    { key:"status", n:9,  head:"狀態 Status",        drum:DRUM }
+    { key:"time",   n:5,      head:"時間 Time",          drum:NUMS },
+    { key:"flight", n:7,      head:"班機 Flight",        drum:DRUM },
+    { key:"body",   n:13,     head:"目的地 Destination", drum:DRUM },
+    { key:"status", n:9,      head:"狀態 Status",        drum:DRUM },
+    { key:"also",   n:ALSO_N, head:"其他 Also",          drum:DRUM }
   ];
   var ROWS = 10;                           // rows on the board
-  var BLANK = ["", "", "", "", "idle"];    // what an unused row shows
+  var BLANK = ["", "", "", "", "", "idle"];   // what an unused row shows
 
   function div(cls, text){
     var d = document.createElement("div");
@@ -806,7 +811,7 @@ body.fs .fshint.show{ opacity:1; }
     grid.style.gridTemplateColumns = "repeat(" + (COLS.length + 1) + ",auto)";
     grid.appendChild(div("colhead", ""));
     COLS.forEach(function(c){
-      var h = div("colhead", c.head);
+      var h = div("colhead col-" + c.key, c.head);
       headEls.push(h);                       // 目的地那欄的標題要跟著面板換
       grid.appendChild(h);
     });
@@ -820,7 +825,7 @@ body.fs .fshint.show{ opacity:1; }
 
       var rowObj = { lamp: lamp, lines: {}, slot: r };
       for(var c = 0; c < COLS.length; c++){
-        var host = div("line");
+        var host = div("line col-" + COLS[c].key);
         grid.appendChild(host);
         rowObj.lines[COLS[c].key] = new Line(COLS[c].n, "md", host, COLS[c].drum);
       }
@@ -856,7 +861,7 @@ body.fs .fshint.show{ opacity:1; }
     ["07:35","IT 610","MACAU"],
     ["07:50","BR 108","TOKYO HND"],
     ["08:05","JX 720","MANILA MNL"],
-    ["08:20","CI 100","TOKYO HND",2],
+    ["08:20","CI 100","TOKYO HND",["JL 5802","KL 5001"]],
     ["08:35","TG 635","BANGKOK BKK"],
     ["08:50","BR 226","SINGAPORE"],
     ["09:05","CI 830","HONG KONG"],
@@ -864,7 +869,7 @@ body.fs .fshint.show{ opacity:1; }
     ["09:35","IT 202","NAGOYA NGO"],
     ["09:50","BR 132","FUKUOKA FUK"],
     ["10:05","CI 660","HO CHI MINH"],
-    ["10:20","MH 367","KUALA LUMPUR",1],
+    ["10:20","MH 367","KUALA LUMPUR",["CI 9067"]],
     ["10:35","BR 256","BANGKOK BKK"],
     ["10:50","CI 116","OSAKA KIX"],
     ["11:10","JX 740","SINGAPORE"],
@@ -892,7 +897,7 @@ body.fs .fshint.show{ opacity:1; }
     ["16:55","BR 236","KUALA LUMPUR"],
     ["17:10","CI 852","SHANGHAI PVG"],
     ["17:25","IT 250","TOKYO NRT"],
-    ["17:40","JL 802","TOKYO NRT",3],
+    ["17:40","JL 802","TOKYO NRT",["CI 9802","AY 5802","QF 5402"]],
     ["17:55","BR 128","OKINAWA OKA"],
     ["18:10","CI 710","PHNOM PENH"],
     ["18:30","EK 367","DUBAI"],
@@ -937,7 +942,7 @@ body.fs .fshint.show{ opacity:1; }
     ["08:55","CI 582","XIAMEN"],
     ["09:10","JX 801","TOKYO NRT"],
     ["09:25","NH 851","TOKYO NRT"],
-    ["09:40","CI 151","TOKYO NRT",2],
+    ["09:40","CI 151","TOKYO NRT",["JL 5801","KL 5002"]],
     ["09:55","BR 171","SEOUL ICN"],
     ["10:10","KE 691","SEOUL ICN"],
     ["10:25","JL 801","TOKYO NRT"],
@@ -953,7 +958,7 @@ body.fs .fshint.show{ opacity:1; }
     ["12:55","BR 131","FUKUOKA FUK"],
     ["13:10","CI 115","OSAKA KIX"],
     ["13:25","IT 281","OSAKA KIX"],
-    ["13:40","MH 366","KUALA LUMPUR",1],
+    ["13:40","MH 366","KUALA LUMPUR",["CI 9066"]],
     ["13:55","VN 576","HO CHI MINH"],
     ["14:15","BR 255","BANGKOK BKK"],
     ["14:30","JX 739","SINGAPORE"],
@@ -1053,6 +1058,22 @@ body.fs .fshint.show{ opacity:1; }
       table:DEMO ? ARR_TABLE : [], states:ARR_STATES, page:0 }
   ];
 
+  /* 「其他」欄放得下幾個班號就放幾個，剩下的用 +n 帶過。三個共掛班號在 18 格裡
+     是「JL 5802 KL 5001 +1」，剛好。 */
+  function alsoText(list){
+    if(!list || !list.length) return "";
+    var shown = [];
+    for(var i = 0; i < list.length; i++){
+      var rest = list.length - i - 1;
+      var text = shown.concat([list[i]]).join(" ") + (rest ? " +" + rest : "");
+      if(text.length > ALSO_N) break;
+      shown.push(list[i]);
+    }
+    if(!shown.length) return "+" + list.length;      // 一個都放不下（不該發生）
+    var left = list.length - shown.length;
+    return shown.join(" ") + (left ? " +" + left : "");
+  }
+
   function stateFor(states, rel){
     for(var i = 0; i < states.length; i++) if(rel <= states[i][0]) return states[i];
     return states[states.length - 1];
@@ -1070,10 +1091,8 @@ body.fs .fshint.show{ opacity:1; }
       if(rel >= 1440 - BACK_MIN) rel -= 1440;
       if(rel > WINDOW_MIN) continue;
       var st = stateFor(b.states, rel);
-      // f[3] 是共掛班號的數量。同一架飛機在官方資料裡拆成好幾筆，合成一列之後
-      // 用 +n 帶出來 —— 欄寬放不下兩個完整班號，這樣至少看得出來還有別的班號。
-      var flight = f[1] + (f[3] ? " +" + f[3] : "");
-      due.push([rel, [f[0], flight, f[2], st[1], st[2]]]);
+      // f[3] 是其他共掛班號（同一架飛機的另外幾個班號），放最後一欄
+      due.push([rel, [f[0], f[1], f[2], st[1], alsoText(f[3]), st[2]]]);
     }
     due.sort(function(a, b){ return a[0] - b[0]; });
     return due.map(function(d){ return d[1]; });
@@ -1351,7 +1370,7 @@ body.fs .fshint.show{ opacity:1; }
   var scrollEl = document.querySelector(".gridscroll");
   var gridEl = document.getElementById("grid");
   var marqEl = document.getElementById("marquee");
-  var U_MIN = 6, U_MAX = 48;
+  var U_MIN = 4, U_MAX = 48;   // 五欄之後手機寬度要縮到這麼小才不會被裁掉
   var curU = 19;
 
   // A centred flex container clips overflow at BOTH ends, so scrollHeight
@@ -1370,12 +1389,29 @@ body.fs .fshint.show{ opacity:1; }
     return h;
   }
 
+  // 顯示幾個資料欄。收掉一欄時 grid 的欄數也要跟著改，不然格子會排到錯的欄位去
+  var shownCols = COLS.length;
+  function setColumns(n){
+    if(shownCols === n) return;
+    shownCols = n;
+    gridEl.classList.toggle("narrow", n < COLS.length);
+    gridEl.style.gridTemplateColumns = "repeat(" + (n + 1) + ",auto)";
+  }
+
   function fit(){
     // Never re-fit mid-flip: each pass forces a synchronous layout, and doing
     // that while a few hundred flaps are turning is exactly the stall this
     // whole engine exists to avoid. Measuring a moving board is pointless too.
     if(active.length){ fitPending = setTimeout(fit, 200); return; }
 
+    // 格子的間距有 clamp 下限，所以 --u 縮到底還是有個最小寬度。真的塞不下就把
+    // 最後一欄收起來再試一次，而不是讓它被裁掉。
+    setColumns(COLS.length);
+    if(!fitPass()) setColumns(COLS.length - 1);
+    fitPass();
+  }
+
+  function fitPass(){
     var root = document.documentElement;
     for(var pass = 0; pass < 8; pass++){
       // writing --u restyles every flap in the tree, so never write a value
@@ -1390,7 +1426,7 @@ body.fs .fshint.show{ opacity:1; }
       var usedW = Math.max(gridEl.getBoundingClientRect().width,
                            marqEl.getBoundingClientRect().width);
 
-      if(!availH || !availW || !usedH || !usedW) return;
+      if(!availH || !availW || !usedH || !usedW) return true;
 
       var k = Math.min(availH / usedH, availW / usedW);
       // k must be >= 1 to actually fit; anything under overflows and gets clipped
@@ -1402,6 +1438,7 @@ body.fs .fshint.show{ opacity:1; }
       if(Math.abs(next - curU) < 0.04) break;
       curU = next;
     }
+    return gridEl.getBoundingClientRect().width <= scrollEl.clientWidth + 1;
   }
 
   var fitPending = 0, lastW = 0, lastH = 0;

@@ -228,7 +228,8 @@ function convert(text){
       flights.sort((a, b) => b.filled - a.filled || (a.flight < b.flight ? -1 : 1));
       const lead = flights[0];
       const line = [lead.time, lead.flight, lead.dest];
-      if(flights.length > 1) line.push(flights.length - 1);   // 還有幾個共掛班號
+      const others = flights.slice(1).map(f => f.flight);
+      if(others.length) line.push(others);      // 其他共掛班號，看板放在最後一欄
       out[lead.bucket].push(line);
     }
   }

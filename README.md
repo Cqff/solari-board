@@ -74,18 +74,25 @@ var ARR_TABLE = [ ["09:10", "JX 801", "TOKYO NRT"], /* ... */ ];
 
 同一架飛機常常掛好幾個班號（codeshare），在官方資料裡就是好幾筆：同方向、同時
 刻、同航點，只有班號不一樣。一班佔四行的話板面很快就被吃光，所以轉檔時就合成
-一列，班機欄用 `+n` 帶出來還有幾個共掛班號：
+一列，其他班號放在最後面的「其他 Also」欄：
 
 ```
-10:00  CI 100 +3   TOKYO NARITA   BOARDING
+時間     班機      目的地          狀態        其他
+08:20   CI 100    TOKYO HND      BOARDING    JL 5802 KL 5001
 ```
 
-欄寬放不下兩個完整班號（`CI 100 / JL 5802` 就要 15 格），所以只顯示一個加數量。
-顯示哪一個：官方資料沒有「誰實際執飛」這個欄位，所以用**欄位填得最完整的那筆**
-——共掛的那幾筆通常沒有機型和報到櫃台——同分再照班號排，結果才不會每次抓都跳。
+那一欄是 18 格，放得下幾個就放幾個，剩下的用 `+n` 帶過（三個共掛就是
+`JL 5802 KL 5001 +1`，剛好 18 格）。格數在 `ALSO_N`。
+
+主班號顯示哪一個：官方資料沒有「誰實際執飛」這個欄位，所以用**欄位填得最完整的
+那筆**——共掛的那幾筆通常沒有機型和報到櫃台——同分再照班號排，結果才不會每次抓
+都跳。
 
 **同時刻同航點但登機門不一樣的不會合併**，那是兩班不同的飛機（例如同一分鐘飛
 香港的 CX 和 KA）。判斷在 `tools/timetable.mjs` 的 `splitByGate`。
+
+視窗窄到五欄排不下時（大概 600px 以下），**最後一欄會自己收起來**，不會被裁掉
+半個字。`fit()` 先用全部欄位量一次，量不下才收一欄重來。
 
 時間一律用**台北時間**：台北 1979 年之後就沒有日光節約時間，所以固定 `+8`
 就是精確值，不必動用 `Intl` 或時區資料庫，看板機器設在哪一區都一樣。右上角的
@@ -195,10 +202,11 @@ WantedBy=multi-user.target
 
 ```js
 var COLS = [
-  { key:"time",   n:5,  head:"時間 Time",          drum:NUMS },
-  { key:"flight", n:7,  head:"班機 Flight",        drum:DRUM },
-  { key:"body",   n:13, head:"目的地 Destination", drum:DRUM },
-  { key:"status", n:9,  head:"狀態 Status",        drum:DRUM }
+  { key:"time",   n:5,      head:"時間 Time",          drum:NUMS },
+  { key:"flight", n:7,      head:"班機 Flight",        drum:DRUM },
+  { key:"body",   n:13,     head:"目的地 Destination", drum:DRUM },
+  { key:"status", n:9,      head:"狀態 Status",        drum:DRUM },
+  { key:"also",   n:ALSO_N, head:"其他 Also",          drum:DRUM }
 ];
 var ROWS = 10;       // 板面行數，也是一頁幾班
 ```
