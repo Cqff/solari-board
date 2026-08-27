@@ -468,7 +468,7 @@ body.fs .fshint.show{ opacity:1; }
 
 <p class="note">
   出發／抵達兩面板 · 台北時間，出發看前 30 分到後 210 分、抵達看前 60 分到後 120 分 ·
-  每 25 秒翻下一頁，翻完回到最前面 ·
+  每 50 秒翻下一頁，翻完回到最前面，共掛班號每 10 秒換一個 ·
   <b>1</b>／<b>2</b> 換面板 · <b>F</b> 全螢幕 · <b>Space</b> 下一頁 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
@@ -791,7 +791,7 @@ body.fs .fshint.show{ opacity:1; }
   // flips per update, and it is how the actual hardware is built.
   var NUMS = " 0123456789:.";
 
-  var ALSO_N = 18;              // 「其他」欄的格數，alsoText 要照這個裁
+  var ALSO_N = 7;               // 「其他」欄的格數 —— 一次只放一個班號
 
   var COLS = [
     { key:"time",   n:5,      head:"時間 Time",          drum:NUMS },
@@ -1014,7 +1014,8 @@ body.fs .fshint.show{ opacity:1; }
      在後面；抵達的人多半是來接機的，前面留久一點比較有用。 */
   var DEP_BACK = 30,  DEP_AHEAD = 210;
   var ARR_BACK = 60,  ARR_AHEAD = 120;
-  var PAGE_EVERY = 25000;   // 每 25 秒翻下一頁，翻完回到最前面
+  var PAGE_EVERY = 50000;   // 每 50 秒翻下一頁，翻完回到最前面
+  var SHARE_EVERY = 10000;  // 共掛班號每 10 秒換下一個
 
   /* 台北沒有日光節約時間（1979 年就停了），所以固定 +8 是精確值，不必動用
      Intl 或時區資料庫 — 看板機器設在哪一區，板上都是 TPE 的時間。 */
@@ -1072,20 +1073,14 @@ body.fs .fshint.show{ opacity:1; }
       back:ARR_BACK, ahead:ARR_AHEAD }
   ];
 
-  /* 「其他」欄放得下幾個班號就放幾個，剩下的用 +n 帶過。三個共掛班號在 18 格裡
-     是「JL 5802 KL 5001 +1」，剛好。 */
+  /* 「其他」欄一次只顯示一個共掛班號，每 SHARE_EVERY 換下一個 —— 這是真的翻頁
+     看板處理共掛的做法，也讓那一欄只要放得下一個班號就好。兩個共掛的十秒換一次，
+     三個的就三十秒繞一圈；沒有共掛的那幾列從頭到尾不動。 */
+  var shareTick = 0;
+
   function alsoText(list){
     if(!list || !list.length) return "";
-    var shown = [];
-    for(var i = 0; i < list.length; i++){
-      var rest = list.length - i - 1;
-      var text = shown.concat([list[i]]).join(" ") + (rest ? " +" + rest : "");
-      if(text.length > ALSO_N) break;
-      shown.push(list[i]);
-    }
-    if(!shown.length) return "+" + list.length;      // 一個都放不下（不該發生）
-    var left = list.length - shown.length;
-    return shown.join(" ") + (left ? " +" + left : "");
+    return list[shareTick % list.length];
   }
 
   function stateFor(states, rel){
@@ -1486,6 +1481,8 @@ body.fs .fshint.show{ opacity:1; }
   requestAnimationFrame(fit);
   setTimeout(function(){ showBoard(BOARDS[0]); fit(); }, 400);
   setInterval(nextPage, PAGE_EVERY);
+  // 只換共掛班號，不換頁 —— 算出來一樣（這一頁沒有共掛）就什麼都不會動
+  setInterval(function(){ shareTick++; paintFlights(); }, SHARE_EVERY);
   setTimeout(fit, 1200);            // once webfonts have settled
 })();
 </script>
