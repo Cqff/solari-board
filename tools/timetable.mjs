@@ -11,6 +11,7 @@
 // 不會默默產出一張空班表。
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { isTdx, tdxRecords, TdxError, TDX_FIDS } from "./tdx.mjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,8 +19,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const OUT = join(ROOT, "data", "timetable.json");
 
-const SOURCE = process.env.TIMETABLE_URL ||
-  "https://odp.taoyuan-airport.com/dataset/2023081816?format=csv";
+// 桃機掛在政府開放平台上的兩份都沒在維護（即時航班凍在 2023-08-17，定期航班的
+// 有效區間到 2025-11-02），所以預設走 TDX。要指回舊來源就設 TIMETABLE_URL。
+const SOURCE = process.env.TIMETABLE_URL || TDX_FIDS;
 
 const MIN_ROWS = 20;    // 比這還少就當作抓到壞資料，寧可留著上一版
 
@@ -207,21 +209,15 @@ function splitByGate(group){
   return groups;
 }
 
-function convert(text){
-  const out = { departures: [], arrivals: [] };
+/* CSV 一列 → 中間格式。TDX 那條路（tools/tdx.mjs）產出同樣形狀的東西，
+   後面的日期過濾和共掛合併兩邊共用。 */
+function csvRecords(text){
   const table = parseCsv(text);
   if(table.length < 2) throw new Error("CSV 只有 " + table.length + " 列，抓到的不是資料");
 
   const at = mapColumns(table[0]);
   const get = (row, key) => at[key] === undefined ? "" : (row[at[key]] || "").trim();
-
-  // 共掛班號（codeshare）在官方資料裡是同一架飛機拆成好幾筆：同方向、同時刻、
-  // 同航點，只有班號不一樣。這裡先照 方向+時刻+航點 分組，之後合成一列。
-  // 兩筆的登機門都有值又不一樣的話就當成兩班不同的飛機，不合併。
-  const groups = new Map();
-  const seen = new Set();
-  let offDate = 0;
-  const offDays = new Map();
+  const records = [];
 
   for(const row of table.slice(1)){
     const kind = get(row, "kind");
@@ -235,21 +231,9 @@ function convert(text){
     const time = hhmm(get(row, "est")) || hhmm(get(row, "sched"));
     if(!time) continue;
 
-    // 別天的班次不要混進來（日期欄讀不出來就不判斷，寧可多留也不要整份濾空）
-    const away = minutesFromNow(get(row, useEst ? "estDate" : "schedDate") ||
-                                get(row, "schedDate"), time);
-    if(away !== null && (away < -KEEP_BACK_MIN || away > KEEP_AHEAD_MIN)){
-      offDate++;
-      const day = String(get(row, useEst ? "estDate" : "schedDate") ||
-                         get(row, "schedDate")).trim();
-      offDays.set(day, (offDays.get(day) || 0) + 1);
-      continue;
-    }
-
     const code = get(row, "airline").toUpperCase().replace(/\s+/g, "");
     let num = get(row, "number").toUpperCase().replace(/\s+/g, "");
     if(code && num.startsWith(code)) num = num.slice(code.length);
-    const flight = ((code ? code + " " : "") + num).slice(0, FLIGHT_N).trim();
     if(!num) continue;
 
     const dest = tidy(get(row, "destEn"), DEST_N) ||
@@ -257,19 +241,51 @@ function convert(text){
                  tidy(get(row, "destCode"), DEST_N);
     if(!dest) continue;
 
-    const key = bucket + time + flight;
+    records.push({
+      bucket,
+      date: (get(row, useEst ? "estDate" : "schedDate") || get(row, "schedDate")).trim(),
+      time,
+      // 共掛的那幾筆不一定都有預計時間，所以分組一律用表訂時間，不然執飛的那筆
+      // 會因為誤點而被分出去，反而拆散同一架飛機
+      schedTime: hhmm(get(row, "sched")) || time,
+      flight: ((code ? code + " " : "") + num).slice(0, FLIGHT_N).trim(),
+      destKey: get(row, "destCode") || dest,
+      dest,
+      gate: get(row, "gate").toUpperCase().replace(/\s+/g, ""),
+      // 有幾個欄位有填 —— 共掛的那幾筆裡，實際執飛的通常資料最完整
+      filled: ["gate", "aircraft", "counter", "terminal"]
+        .reduce((n, f) => n + (get(row, f) ? 1 : 0), 0)
+    });
+  }
+  return records;
+}
+
+/* 中間格式 → 看板要的兩份班表。日期過濾和共掛合併都在這裡，所以 CSV 和 TDX
+   兩條路的行為一致。 */
+function assemble(records){
+  const out = { departures: [], arrivals: [] };
+  const groups = new Map();
+  const seen = new Set();
+  let offDate = 0;
+  const offDays = new Map();
+
+  for(const r of records){
+    // 別天的班次不要混進來（日期讀不出來就不判斷，寧可多留也不要整份濾空）
+    const away = minutesFromNow(r.date, r.time);
+    if(away !== null && (away < -KEEP_BACK_MIN || away > KEEP_AHEAD_MIN)){
+      offDate++;
+      offDays.set(r.date, (offDays.get(r.date) || 0) + 1);
+      continue;
+    }
+
+    const at = r.schedTime || r.time;
+    const key = r.bucket + at + r.flight;
     if(seen.has(key)) continue;      // 一模一樣的重複列
     seen.add(key);
 
-    const gate = get(row, "gate").toUpperCase().replace(/\s+/g, "");
-    // 有幾個欄位有填 —— 共掛的那幾筆裡，實際執飛的通常資料最完整
-    const filled = ["gate", "aircraft", "counter", "terminal"]
-      .reduce((n, f) => n + (get(row, f) ? 1 : 0), 0);
-
-    const groupKey = bucket + time + (get(row, "destCode") || dest);
-    let group = groups.get(groupKey);
-    if(!group){ group = []; groups.set(groupKey, group); }
-    group.push({ bucket, time, flight, dest, gate, filled });
+    const groupKey = r.bucket + at + (r.destKey || r.dest);
+    if(!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push(r);
   }
 
   for(const group of groups.values()){
@@ -277,20 +293,19 @@ function convert(text){
     for(const flights of splitByGate(group)){
       flights.sort((a, b) => b.filled - a.filled || (a.flight < b.flight ? -1 : 1));
       const lead = flights[0];
-      // [時間, 班機, 目的地/來自, 登機門, 其他共掛班號]
-      const others = flights.slice(1).map(f => f.flight);
       if(lead.gate.length > GATE_N){
         console.warn(`登機門「${lead.gate}」超過 ${GATE_N} 格會被切掉 —— ` +
                      `GATE_N 和 board.html 的 COLS 要一起加寬`);
       }
-      const line = [lead.time, lead.flight, lead.dest, lead.gate.slice(0, GATE_N)];
+      // [時間, 班機, 目的地/來自, 登機門, 其他共掛班號]
+      const others = flights.slice(1).map(f => f.flight);
+      const line = [lead.time, lead.flight, lead.dest.slice(0, DEST_N), lead.gate.slice(0, GATE_N)];
       if(others.length) line.push(others);
       out[lead.bucket].push(line);
     }
   }
 
   if(offDate) console.log(`照日期濾掉 ${offDate} 筆（不在現在前 ${KEEP_BACK_MIN / 60} 小時到後 ${KEEP_AHEAD_MIN / 60} 小時之內）`);
-
 
   const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
   for(const k of ["departures", "arrivals"]){
@@ -305,6 +320,10 @@ function convert(text){
     offDate: offDate,
     offDays: [...offDays.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
   };
+}
+
+function convert(text){
+  return assemble(csvRecords(text));
 }
 
 /* ---------- 寫檔 ---------- */
@@ -330,14 +349,21 @@ export class FetchFailed extends Error {}
 
 // 抓 + 轉。抓不到丟 FetchFailed（對方的問題），轉不出來丟一般 Error（我們的問題）
 export async function fetchTimetable(src = SOURCE){
-  let raw;
-  try{
-    raw = await grab(src);
-  }catch(err){
-    throw new FetchFailed("抓不到 " + src + "：" + err.message);
+  let t;
+  if(isTdx(src)){
+    // TDX 的錯誤自己會講清楚（沒金鑰、額度用完、欄位對不到），不要包成 FetchFailed
+    const got = await tdxRecords(src);
+    t = assemble(got.records);
+  }else{
+    let raw;
+    try{
+      raw = await grab(src);
+    }catch(err){
+      throw new FetchFailed("抓不到 " + src + "：" + err.message);
+    }
+    t = convert(decode(raw));
   }
 
-  const t = convert(decode(raw));
   const total = t.departures.length + t.arrivals.length;
 
   // 這道關卡是防遠端回壞資料用的；拿本地檔案測欄位對照時不擋
@@ -372,6 +398,21 @@ export async function writeTimetable(t){
 /* 查某個班次在原始 CSV 裡長什麼樣子 —— 板上出現看不懂的班次時，這是唯一能分辨
    「官方資料就這樣寫」還是「我轉錯了」的辦法。 */
 export async function findRaw(src, needle){
+  if(isTdx(src)){
+    const { raw } = await tdxRecords(src);
+    const flat = v => String(v).toUpperCase().replace(/\s+/g, "");
+    const want = flat(needle);
+    const header = raw.length ? Object.keys(raw[0]) : [];
+    const hit = raw.filter(o => flat(Object.values(o).join("|")).includes(want) ||
+                                flat(String(o.AirlineID) + String(o.FlightNumber)).includes(want));
+    return {
+      header,
+      rows: hit.map(o => header.map(k => {
+        const v = o[k];
+        return v && typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
+      }))
+    };
+  }
   const table = parseCsv(decode(await grab(src)));
   const flat = v => String(v).toUpperCase().replace(/\s+/g, "");
   const want = flat(needle);
@@ -396,12 +437,35 @@ export async function findRaw(src, needle){
 
 /* 前幾列長什麼樣子 —— 換來源時第一件要看的事，欄位怎麼排都不知道就寫不出對照。 */
 export async function peekRows(src, n = 3){
+  if(isTdx(src)){
+    const { raw } = await tdxRecords(src);
+    if(!raw.length) return { header: [], total: 0, rows: [] };
+    const header = Object.keys(raw[0]);
+    return {
+      header,
+      total: raw.length,
+      rows: raw.slice(0, n).map(o => header.map(k => {
+        const v = o[k];
+        return v && typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
+      }))
+    };
+  }
   const table = parseCsv(decode(await grab(src)));
   return { header: table[0], total: table.length - 1, rows: table.slice(1, 1 + n) };
 }
 
 /* 這份資料是哪幾天的 —— 「你是不是抓到三年前的資料」只能用資料本身回答。 */
 export async function dateTally(src){
+  if(isTdx(src)){
+    const { records } = await tdxRecords(src);
+    const count = new Map();
+    for(const r of records) count.set(r.date, (count.get(r.date) || 0) + 1);
+    return {
+      header: [], column: "TDX 班次日期", total: records.length,
+      days: [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
+      today: todayTpe()
+    };
+  }
   const table = parseCsv(decode(await grab(src)));
   const at = (() => {
     const seen = table[0].map(norm);
@@ -457,4 +521,4 @@ export async function validityTally(src){
   return { total: table.length - 1, today, dow, covering, flyingToday, minFrom, maxTo };
 }
 
-export { SOURCE, OUT };
+export { SOURCE, OUT, TdxError };

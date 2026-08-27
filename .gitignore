@@ -4,3 +4,4 @@ Thumbs.db
 
 # 本地跑 tools/serve.mjs 產生的，不進版控
 data/timetable.json
+data/airports.json
