@@ -1,13 +1,16 @@
 # Solari 翻頁看板
 
 機械翻頁顯示看板（split-flap / Solari board），純前端、單一檔案、無相依套件。
-10 行的 TPE 航班看板，**出發／抵達兩個分頁**，可全螢幕上牆。兩面板規則一樣：照
-台北時間顯示**前 1 小時到後 4 小時**的班次，狀態跟著時鐘自己翻；裝不下的班次每
-25 秒翻下一頁，翻完回到最前面。
+10 行的 TPE 航班看板，**出發／抵達兩個分頁**，可全螢幕上牆。照台北時間顯示一段
+時間窗內的班次（出發 −30～+210 分，抵達 −60～+120 分），狀態跟著時鐘自己翻；
+裝不下的班次每 25 秒翻下一頁，翻完回到最前面。
 
 ## 線上版
 
-GitHub Pages: <https://cqff.github.io/solari-board/>
+GitHub Pages: <https://cqff.github.io/solari-board/?demo>
+
+線上版沒有資料來源，所以那個網址帶了 `?demo` —— 板上跑的是**編出來的**示範班表，
+只是給人看看這東西長什麼樣子。要真的班次得在本地跑（見下面「接上官方即時航班」）。
 
 ## 操作
 
@@ -25,10 +28,24 @@ GitHub Pages: <https://cqff.github.io/solari-board/>
 
 ## 班表與輪播
 
-看板只把「前 1 小時到後 4 小時」那一段畫出來。班表有兩個來源：`tools/serve.mjs`
-跑起來之後用它產生的 `data/timetable.json`（見下一節），抓不到就用 `src/board.html`
-裡內建的 `DEP_TABLE` 和 `ARR_TABLE`。格式都一樣，每筆是
-`[時間, 班機, 目的地或來自]`，台北時間，照時刻排序：
+看板只把現在前後一段時間的班次畫出來。兩面板的窗不一樣 —— 出發的人在意的是接
+下來要飛什麼，接機的人在意的是剛剛到了沒：
+
+| | 往前 | 往後 |
+| --- | --- | --- |
+| 出發 `DEP_BACK` / `DEP_AHEAD` | 30 分 | 210 分 |
+| 抵達 `ARR_BACK` / `ARR_AHEAD` | 60 分 | 120 分 |
+
+班表來自 `tools/serve.mjs` 產生的
+`data/timetable.json`（見下一節）。**抓不到就是空的**：副標會寫 `NO LIVE TIMETABLE`，
+左下角寫 `NO FEED`，板上一班都不會有。一面掛在牆上的航班看板寧可空著，也不能理
+直氣壯地顯示假航班。
+
+`src/board.html` 裡的 `DEP_TABLE` / `ARR_TABLE` 是**編出來的**示範班表 —— 航線和
+時段照 TPE 的樣子排，但班號時刻都是假的，跟真的航班對不起來。它預設不會上板，
+只有網址帶 `?demo` 時才用，給截圖和改版面用。
+
+三種班表的格式都一樣，每筆是 `[時間, 班機, 目的地或來自]`，台北時間，照時刻排序：
 
 ```js
 var DEP_TABLE = [ ["09:20", "JX 802", "TOKYO NRT"], /* ... */ ];
@@ -50,8 +67,8 @@ var ARR_TABLE = [ ["09:10", "JX 801", "TOKYO NRT"], /* ... */ ];
 
 抵達沒有紅燈：紅色是「你再不走就趕不上了」的意思，接機的人沒有這種急迫性。
 
-視窗前後長度是 `BACK_MIN`（60 分）和 `WINDOW_MIN`（240 分）—— 前一小時那段留著讓
-人確認自己是不是錯過了。視窗會繞過午夜：23:55 那班在 00:30 看就是「剛起飛」。
+往前那段留著讓人確認自己是不是錯過了。視窗會繞過午夜：23:55 那班在 00:30 看就是
+「剛起飛」。
 
 五個小時的班次通常不只十班，所以**切頁輪播**：一頁十行，每 `PAGE_EVERY`（25 秒）
 翻下一頁，翻到最後一頁就回到第一頁（也就是前一小時那頁），一直繞。副標會寫現在
@@ -60,6 +77,30 @@ var ARR_TABLE = [ ["09:10", "JX 801", "TOKYO NRT"], /* ... */ ];
 
 兩個面板的定義在 `BOARDS`，各自帶著自己的班表、狀態分段、大字列和第三欄標題；
 頁碼也是各記各的，切過去接著自己的進度。
+
+### 共享航班
+
+同一架飛機常常掛好幾個班號（codeshare），在官方資料裡就是好幾筆：同方向、同時
+刻、同航點，只有班號不一樣。一班佔四行的話板面很快就被吃光，所以轉檔時就合成
+一列，其他班號放在最後面的「其他 Also」欄：
+
+```
+時間     班機      目的地          狀態        其他
+08:20   CI 100    TOKYO HND      BOARDING    JL 5802 KL 5001
+```
+
+那一欄是 18 格，放得下幾個就放幾個，剩下的用 `+n` 帶過（三個共掛就是
+`JL 5802 KL 5001 +1`，剛好 18 格）。格數在 `ALSO_N`。
+
+主班號顯示哪一個：官方資料沒有「誰實際執飛」這個欄位，所以用**欄位填得最完整的
+那筆**——共掛的那幾筆通常沒有機型和報到櫃台——同分再照班號排，結果才不會每次抓
+都跳。
+
+**同時刻同航點但登機門不一樣的不會合併**，那是兩班不同的飛機（例如同一分鐘飛
+香港的 CX 和 KA）。判斷在 `tools/timetable.mjs` 的 `splitByGate`。
+
+視窗窄到五欄排不下時（大概 600px 以下），**最後一欄會自己收起來**，不會被裁掉
+半個字。`fit()` 先用全部欄位量一次，量不下才收一欄重來。
 
 時間一律用**台北時間**：台北 1979 年之後就沒有日光節約時間，所以固定 `+8`
 就是精確值，不必動用 `Intl` 或時區資料庫，看板機器設在哪一區都一樣。右上角的
@@ -81,22 +122,38 @@ node tools/serve.mjs
 看板在 <http://localhost:8080>，開瀏覽器按 `F` 全螢幕就可以掛牆。這支做兩件事：
 
 - 把板面服務出來（`file://` 開的話瀏覽器不准抓旁邊的檔案，所以要有個 server）
-- 每 10 分鐘抓一次政府資料開放平臺
+- 每 3 分鐘抓一次政府資料開放平臺
   [桃園國際機場即時航班](https://data.gov.tw/dataset/26194) 的 CSV，依「種類」欄
   拆成出發和抵達兩份，轉成 `data/timetable.json`：
 
 ```json
 { "generated": "…", "source": "…",
-  "departures": [ ["09:20","JX 802","TOKYO NRT"] ],
-  "arrivals":   [ ["09:10","JX 801","TOKYO NRT"] ] }
+  "departures": [ ["09:20","JX 802","TOKYO NRT","D5",["CI 9802"]] ],
+  "arrivals":   [ ["09:10","JX 801","TOKYO NRT","A3"] ] }
 ```
 
-看板自己每 5 分鐘回頭抓那個檔案，所以**不用重新整理**，班表換了就會自己翻上去。
-抓不到（對方掛了、網路斷了）就留著上一版，再不行就用內建的示範班表 —— 板面不會
-開天窗。
+每筆是 `[時間, 班機, 目的地或來自, 登機門, 其他共掛班號]`，後兩個可以省略。
+
+官方那份每 5 分鐘更新一次，這裡設 3 分鐘是為了不要卡在它的更新邊上 —— 抓比它快
+沒有壞處，CSV 沒變的話連檔案都不會動。看板自己每 2 分鐘回頭抓那個檔案，所以
+**不用重新整理**，班表換了就會自己翻上去。
+抓不到（對方掛了、網路斷了）就留著上一版繼續顯示 —— 銘牌上的時間就說明了資料
+有多舊。從頭到尾沒抓到過的話，板面是空的。
+
+**板面左下角的銘牌會照實寫現在用的是哪一份**：
+
+| 銘牌 | 意思 |
+| --- | --- |
+| `TPE OPEN DATA · 14:02` | 官方資料，後面是這份資料抓下來的台北時間 |
+| `NO FEED · RUN tools/serve.mjs` | 沒抓到，板上是空的 |
+| `SAMPLE TIMETABLE · MADE UP, NOT REAL FLIGHTS` | `?demo`，板上是假航班 |
+
+看到後面兩種，就表示板上的東西不能拿來趕飛機。抓不到最常見的兩個原因：沒有透過
+`tools/serve.mjs` 開（直接點 `index.html` 的話瀏覽器不准它抓旁邊的檔案），或者官
+方那台當下連不上（伺服器的 log 會寫）。單獨測抓得到抓不到：
 
 ```bash
-node tools/serve.mjs --port 9000 --every 5     # 換埠號、改成 5 分鐘一次
+node tools/serve.mjs --port 9000 --every 5     # 換埠號、改成 5 分鐘抓一次
 node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
 ```
 
@@ -110,7 +167,8 @@ node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
 印出來再結束。要單獨測轉檔：
 
 ```bash
-node tools/fetch-timetable.mjs some.csv   # 抓一次就結束，不起 server
+node tools/fetch-timetable.mjs            # 抓一次就結束，印出抓到幾筆或錯在哪
+node tools/fetch-timetable.mjs some.csv   # 吃本地 CSV，不連網
 ```
 
 ### 開機自己跑
@@ -156,10 +214,12 @@ WantedBy=multi-user.target
 
 ```js
 var COLS = [
-  { key:"time",   n:5,  head:"時間 Time",          drum:NUMS },
-  { key:"flight", n:7,  head:"班機 Flight",        drum:DRUM },
-  { key:"body",   n:13, head:"目的地 Destination", drum:DRUM },
-  { key:"status", n:9,  head:"狀態 Status",        drum:DRUM }
+  { key:"time",   n:5,      head:"時間 Time",          drum:NUMS },
+  { key:"flight", n:7,      head:"班機 Flight",        drum:DRUM },
+  { key:"body",   n:13,     head:"目的地 Destination", drum:DRUM },
+  { key:"status", n:9,      head:"狀態 Status",        drum:DRUM },
+  { key:"gate",   n:4,      head:"登機門 Gate",        drum:DRUM },
+  { key:"also",   n:ALSO_N, head:"其他 Also",          drum:DRUM }
 ];
 var ROWS = 10;       // 板面行數，也是一頁幾班
 ```

@@ -22,9 +22,12 @@ const SOURCE = process.env.TIMETABLE_URL ||
   "https://odp.taoyuan-airport.com/dataset/2023081816?format=csv";
 
 const MIN_ROWS = 20;    // 比這還少就當作抓到壞資料，寧可留著上一版
-const MAX_ROWS = 400;   // 看板一次只顯示 10 行，整天的班次也用不到這麼多
+// 純粹是防呆上限。TPE 一天三百多班出發，設 400 的話遇到含隔日班次的資料就會從
+// 最晚的那些開始被切掉 —— 排序是照時刻的，切尾巴等於把深夜的班次砍光。
+const MAX_ROWS = 1500;
 const DEST_N = 13;      // 目的地欄的格數，跟 board.html 的 COLS 對齊
 const FLIGHT_N = 7;
+const GATE_N = 4;
 
 // 一個欄位可以有好幾種寫法，由左往右找，全部找不到才算缺欄位
 const FIELDS = {
@@ -36,7 +39,11 @@ const FIELDS = {
   destEn:   ["往來地點英文", "目的地英文", "airPortNameEnglish"],
   destZh:   ["往來地點中文", "目的地", "airPortNameChinese"],
   destCode: ["往來地點", "航點", "airPort", "airportCode"],
-  status:   ["航班狀態", "航班動態中文", "航班動態英文", "狀態", "status"]
+  status:   ["航班狀態", "航班動態中文", "航班動態英文", "狀態", "status"],
+  gate:     ["機門", "登機門", "gate"],
+  aircraft: ["機型", "機種", "aircraft", "acType"],
+  counter:  ["報到櫃台", "櫃台", "counter"],
+  terminal: ["航廈", "航廈別", "terminal"]
 };
 const REQUIRED = ["kind", "number", "sched"];
 
@@ -146,19 +153,42 @@ function tidy(name, n){
     .trim().toUpperCase().slice(0, n);
 }
 
+// 同一組裡登機門明確不同的，是兩班不同的飛機，不能合併
+function splitByGate(group){
+  const byGate = new Map();
+  for(const f of group){
+    const k = f.gate || "";
+    if(!byGate.has(k)) byGate.set(k, []);
+    byGate.get(k).push(f);
+  }
+  if(byGate.size <= 1) return [group];
+  // 沒填登機門的那幾筆併回最大的那一組，別讓它們自己單獨成行
+  const rest = byGate.get("") || [];
+  byGate.delete("");
+  const groups = [...byGate.values()];
+  if(!groups.length) return [rest];
+  groups.sort((a, b) => b.length - a.length);
+  groups[0].push(...rest);
+  return groups;
+}
+
 function convert(text){
+  const out = { departures: [], arrivals: [] };
   const table = parseCsv(text);
   if(table.length < 2) throw new Error("CSV 只有 " + table.length + " 列，抓到的不是資料");
 
   const at = mapColumns(table[0]);
   const get = (row, key) => at[key] === undefined ? "" : (row[at[key]] || "").trim();
 
+  // 共掛班號（codeshare）在官方資料裡是同一架飛機拆成好幾筆：同方向、同時刻、
+  // 同航點，只有班號不一樣。這裡先照 方向+時刻+航點 分組，之後合成一列。
+  // 兩筆的登機門都有值又不一樣的話就當成兩班不同的飛機，不合併。
+  const groups = new Map();
   const seen = new Set();
-  const out = { departures: [], arrivals: [] };
 
   for(const row of table.slice(1)){
     const kind = get(row, "kind");
-    const bucket = isDeparture(kind) ? out.departures : isArrival(kind) ? out.arrivals : null;
+    const bucket = isDeparture(kind) ? "departures" : isArrival(kind) ? "arrivals" : null;
     if(!bucket) continue;
     if(isCancelled(get(row, "status"))) continue;
 
@@ -178,13 +208,40 @@ function convert(text){
                  tidy(get(row, "destCode"), DEST_N);
     if(!dest) continue;
 
-    const key = kind + time + flight;
-    if(seen.has(key)) continue;      // 同一班在資料裡出現兩次（共掛班號）只留一筆
+    const key = bucket + time + flight;
+    if(seen.has(key)) continue;      // 一模一樣的重複列
     seen.add(key);
-    bucket.push([time, flight, dest]);
+
+    const gate = get(row, "gate").toUpperCase().replace(/\s+/g, "");
+    // 有幾個欄位有填 —— 共掛的那幾筆裡，實際執飛的通常資料最完整
+    const filled = ["gate", "aircraft", "counter", "terminal"]
+      .reduce((n, f) => n + (get(row, f) ? 1 : 0), 0);
+
+    const groupKey = bucket + time + (get(row, "destCode") || dest);
+    let group = groups.get(groupKey);
+    if(!group){ group = []; groups.set(groupKey, group); }
+    group.push({ bucket, time, flight, dest, gate, filled });
+  }
+
+  for(const group of groups.values()){
+    // 登機門不同的拆開來各自成行
+    for(const flights of splitByGate(group)){
+      flights.sort((a, b) => b.filled - a.filled || (a.flight < b.flight ? -1 : 1));
+      const lead = flights[0];
+      // [時間, 班機, 目的地/來自, 登機門, 其他共掛班號]
+      const others = flights.slice(1).map(f => f.flight);
+      const line = [lead.time, lead.flight, lead.dest, lead.gate.slice(0, GATE_N)];
+      if(others.length) line.push(others);
+      out[lead.bucket].push(line);
+    }
   }
 
   const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  for(const k of ["departures", "arrivals"]){
+    if(out[k].length > MAX_ROWS){
+      console.warn(`${k} 有 ${out[k].length} 筆，超過上限 ${MAX_ROWS}，最晚的那些會被切掉`);
+    }
+  }
   return {
     departures: out.departures.sort(byTime).slice(0, MAX_ROWS),
     arrivals:   out.arrivals.sort(byTime).slice(0, MAX_ROWS)
