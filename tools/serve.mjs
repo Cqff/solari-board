@@ -1,11 +1,14 @@
 // 本地端跑看板：一邊把板面服務出來，一邊定時去抓官方班表。
 //
-//   node tools/serve.mjs                       # http://localhost:8080，每 10 分鐘更新
+//   node tools/serve.mjs                       # http://localhost:8080，每 3 分鐘更新
 //   node tools/serve.mjs --port 9000 --every 5
 //   node tools/serve.mjs --source some.csv     # 吃本地 CSV，不連網（測用）
 //
-// 開起來之後瀏覽器連上去按 F 全螢幕就可以掛牆了。看板自己每 5 分鐘會回頭抓一次
+// 開起來之後瀏覽器連上去按 F 全螢幕就可以掛牆了。看板自己每 2 分鐘會回頭抓一次
 // data/timetable.json，所以不用重新整理，這支寫進去多久就會反映上板。
+//
+// 官方那份即時航班每 5 分鐘更新一次，這裡設 3 分鐘是為了不要卡在它的更新邊上 —
+// 抓比它快沒有壞處，那支 CSV 沒變的話連檔案都不會動。
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -23,7 +26,7 @@ function arg(name, fallback){
 }
 
 const PORT = Number(arg("port", process.env.PORT || 8080));
-const EVERY = Number(arg("every", 10)) * 60 * 1000;
+const EVERY = Number(arg("every", 3)) * 60 * 1000;
 const SRC = arg("source", SOURCE);
 
 /* ---------- 定時更新 ---------- */

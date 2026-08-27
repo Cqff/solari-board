@@ -467,7 +467,8 @@ body.fs .fshint.show{ opacity:1; }
 <div class="fshint" id="fshint">Esc 離開 · 1 出發 / 2 抵達 · Space 下一頁</div>
 
 <p class="note">
-  出發／抵達兩面板 · 台北時間前 1 小時到後 4 小時，每 25 秒翻下一頁，翻完回到最前面 ·
+  出發／抵達兩面板 · 台北時間，出發看前 30 分到後 210 分、抵達看前 60 分到後 120 分 ·
+  每 25 秒翻下一頁，翻完回到最前面 ·
   <b>1</b>／<b>2</b> 換面板 · <b>F</b> 全螢幕 · <b>Space</b> 下一頁 ·
   每頁＝單片落下時間 · 行程＝最多翻幾片 · 排距＝每排間隔（同時是翻頁聲的節拍）
 </p>
@@ -797,10 +798,11 @@ body.fs .fshint.show{ opacity:1; }
     { key:"flight", n:7,      head:"班機 Flight",        drum:DRUM },
     { key:"body",   n:13,     head:"目的地 Destination", drum:DRUM },
     { key:"status", n:9,      head:"狀態 Status",        drum:DRUM },
+    { key:"gate",   n:4,      head:"登機門 Gate",        drum:DRUM },
     { key:"also",   n:ALSO_N, head:"其他 Also",          drum:DRUM }
   ];
   var ROWS = 10;                           // rows on the board
-  var BLANK = ["", "", "", "", "", "idle"];   // what an unused row shows
+  var BLANK = ["", "", "", "", "", "", "idle"];   // what an unused row shows
 
   function div(cls, text){
     var d = document.createElement("div");
@@ -856,160 +858,162 @@ body.fs .fshint.show{ opacity:1; }
      ?demo 又抓不到 data/timetable.json 的話，板面就是空的，並且明講沒有資料。
      一面掛在牆上的航班看板寧可空著，也不能理直氣壯地顯示假航班。 */
   var DEP_TABLE = [
-    ["00:20","BR 067","VIENNA"],
-    ["00:55","CI 073","LONDON LHR"],
-    ["01:30","BR 087","AMSTERDAM"],
-    ["02:15","CI 023","LOS ANGELES"],
-    ["05:45","IT 282","OSAKA KIX"],
-    ["06:10","BR 802","HONG KONG"],
-    ["06:35","CI 152","TOKYO NRT"],
-    ["06:50","JX 820","OSAKA KIX"],
-    ["07:05","BR 172","SEOUL ICN"],
-    ["07:20","CI 581","XIAMEN"],
-    ["07:35","IT 610","MACAU"],
-    ["07:50","BR 108","TOKYO HND"],
-    ["08:05","JX 720","MANILA MNL"],
-    ["08:20","CI 100","TOKYO HND",["JL 5802","KL 5001"]],
-    ["08:35","TG 635","BANGKOK BKK"],
-    ["08:50","BR 226","SINGAPORE"],
-    ["09:05","CI 830","HONG KONG"],
-    ["09:20","JX 802","TOKYO NRT"],
-    ["09:35","IT 202","NAGOYA NGO"],
-    ["09:50","BR 132","FUKUOKA FUK"],
-    ["10:05","CI 660","HO CHI MINH"],
-    ["10:20","MH 367","KUALA LUMPUR",["CI 9067"]],
-    ["10:35","BR 256","BANGKOK BKK"],
-    ["10:50","CI 116","OSAKA KIX"],
-    ["11:10","JX 740","SINGAPORE"],
-    ["11:25","CX 465","HONG KONG"],
-    ["11:40","IT 236","SAPPORO CTS"],
-    ["11:55","BR 192","SEOUL ICN"],
-    ["12:10","CI 782","MANILA MNL"],
-    ["12:30","VN 577","HO CHI MINH"],
-    ["12:45","BR 118","TOKYO NRT"],
-    ["13:00","JX 826","FUKUOKA FUK"],
-    ["13:15","CI 620","HANOI HAN"],
-    ["13:30","SQ 879","SINGAPORE"],
-    ["13:45","IT 704","DA NANG"],
-    ["14:00","BR 872","SHANGHAI PVG"],
-    ["14:20","CI 502","HONG KONG"],
-    ["14:35","PR 897","MANILA MNL"],
-    ["14:50","JX 810","TOKYO HND"],
-    ["15:05","BR 212","JAKARTA CGK"],
-    ["15:20","CI 130","NAGOYA NGO"],
-    ["15:40","NH 852","TOKYO NRT"],
-    ["15:55","BR 388","GUANGZHOU"],
-    ["16:10","JX 754","PHUKET"],
-    ["16:25","CI 918","HONG KONG"],
-    ["16:40","KE 692","SEOUL ICN"],
-    ["16:55","BR 236","KUALA LUMPUR"],
-    ["17:10","CI 852","SHANGHAI PVG"],
-    ["17:25","IT 250","TOKYO NRT"],
-    ["17:40","JL 802","TOKYO NRT",["CI 9802","AY 5802","QF 5402"]],
-    ["17:55","BR 128","OKINAWA OKA"],
-    ["18:10","CI 710","PHNOM PENH"],
-    ["18:30","EK 367","DUBAI"],
-    ["18:45","BR 716","BANGKOK BKK"],
-    ["19:00","JX 780","MACAU"],
-    ["19:15","CI 202","TOKYO NRT"],
-    ["19:30","OZ 712","SEOUL ICN"],
-    ["19:45","BR 892","HONG KONG"],
-    ["20:00","QR 915","DOHA"],
-    ["20:20","CI 062","NEW YORK JFK"],
-    ["20:35","JX 728","HO CHI MINH"],
-    ["20:50","BR 396","SHENZHEN"],
-    ["21:05","TK 025","ISTANBUL"],
-    ["21:20","CI 176","TOKYO HND"],
-    ["21:35","IT 268","OSAKA KIX"],
-    ["21:50","BR 762","SINGAPORE"],
-    ["22:05","UA 872","SAN FRANCISCO"],
-    ["22:20","CI 838","HONG KONG"],
-    ["22:40","JX 850","SEOUL ICN"],
-    ["22:55","BR 032","LOS ANGELES"],
-    ["23:10","CI 026","SEATTLE"],
-    ["23:25","SQ 875","SINGAPORE"],
-    ["23:40","BR 606","VANCOUVER"],
-    ["23:55","JX 202","LOS ANGELES"]
+    ["00:20","BR 067","VIENNA","B5"],
+    ["00:55","CI 073","LONDON LHR","C3"],
+    ["01:30","BR 087","AMSTERDAM","D7"],
+    ["02:15","CI 023","LOS ANGELES","B7"],
+    ["05:45","IT 282","OSAKA KIX","B4"],
+    ["06:10","BR 802","HONG KONG","C2"],
+    ["06:35","CI 152","TOKYO NRT","A1"],
+    ["06:50","JX 820","OSAKA KIX","A7"],
+    ["07:05","BR 172","SEOUL ICN","C2"],
+    ["07:20","CI 581","XIAMEN","C7"],
+    ["07:35","IT 610","MACAU","A8"],
+    ["07:50","BR 108","TOKYO HND","B1"],
+    ["08:05","JX 720","MANILA MNL","D6"],
+    ["08:20","CI 100","TOKYO HND","B3",["JL 5802","KL 5001"]],
+    ["08:35","TG 635","BANGKOK BKK","B4"],
+    ["08:50","BR 226","SINGAPORE","C2"],
+    ["09:05","CI 830","HONG KONG","D4"],
+    ["09:20","JX 802","TOKYO NRT","A7"],
+    ["09:35","IT 202","NAGOYA NGO","B5"],
+    ["09:50","BR 132","FUKUOKA FUK","C7"],
+    ["10:05","CI 660","HO CHI MINH","A5"],
+    ["10:20","MH 367","KUALA LUMPUR","B9",["CI 9067"]],
+    ["10:35","BR 256","BANGKOK BKK","B5"],
+    ["10:50","CI 116","OSAKA KIX","A1"],
+    ["11:10","JX 740","SINGAPORE","B8"],
+    ["11:25","CX 465","HONG KONG","C5"],
+    ["11:40","IT 236","SAPPORO CTS","A3"],
+    ["11:55","BR 192","SEOUL ICN","A4"],
+    ["12:10","CI 782","MANILA MNL","B1"],
+    ["12:30","VN 577","HO CHI MINH","D9"],
+    ["12:45","BR 118","TOKYO NRT","C2"],
+    ["13:00","JX 826","FUKUOKA FUK","C4"],
+    ["13:15","CI 620","HANOI HAN","A1"],
+    ["13:30","SQ 879","SINGAPORE","A5"],
+    ["13:45","IT 704","DA NANG","A3"],
+    ["14:00","BR 872","SHANGHAI PVG","B9"],
+    ["14:20","CI 502","HONG KONG","D9"],
+    ["14:35","PR 897","MANILA MNL","C3"],
+    ["14:50","JX 810","TOKYO HND","D6"],
+    ["15:05","BR 212","JAKARTA CGK","B6"],
+    ["15:20","CI 130","NAGOYA NGO","A6"],
+    ["15:40","NH 852","TOKYO NRT","B9"],
+    ["15:55","BR 388","GUANGZHOU","D2"],
+    ["16:10","JX 754","PHUKET","C4"],
+    ["16:25","CI 918","HONG KONG","C2"],
+    ["16:40","KE 692","SEOUL ICN","B5"],
+    ["16:55","BR 236","KUALA LUMPUR","D3"],
+    ["17:10","CI 852","SHANGHAI PVG","D8"],
+    ["17:25","IT 250","TOKYO NRT","A8"],
+    ["17:40","JL 802","TOKYO NRT","A4",["CI 9802","AY 5802","QF 5402"]],
+    ["17:55","BR 128","OKINAWA OKA","D3"],
+    ["18:10","CI 710","PHNOM PENH","A1"],
+    ["18:30","EK 367","DUBAI","A4"],
+    ["18:45","BR 716","BANGKOK BKK","C6"],
+    ["19:00","JX 780","MACAU","B3"],
+    ["19:15","CI 202","TOKYO NRT","A6"],
+    ["19:30","OZ 712","SEOUL ICN","D5"],
+    ["19:45","BR 892","HONG KONG","D2"],
+    ["20:00","QR 915","DOHA","C4"],
+    ["20:20","CI 062","NEW YORK JFK","A1"],
+    ["20:35","JX 728","HO CHI MINH","D5"],
+    ["20:50","BR 396","SHENZHEN","C1"],
+    ["21:05","TK 025","ISTANBUL","C1"],
+    ["21:20","CI 176","TOKYO HND","C7"],
+    ["21:35","IT 268","OSAKA KIX","B8"],
+    ["21:50","BR 762","SINGAPORE","D7"],
+    ["22:05","UA 872","SAN FRANCISCO","D2"],
+    ["22:20","CI 838","HONG KONG","D3"],
+    ["22:40","JX 850","SEOUL ICN","D1"],
+    ["22:55","BR 032","LOS ANGELES","B6"],
+    ["23:10","CI 026","SEATTLE","A1"],
+    ["23:25","SQ 875","SINGAPORE","A1"],
+    ["23:40","BR 606","VANCOUVER","A4"],
+    ["23:55","JX 202","LOS ANGELES","C1"]
   ];
 
   var ARR_TABLE = [
-    ["04:45","BR 031","LOS ANGELES"],
-    ["05:10","CI 021","LOS ANGELES"],
-    ["05:35","UA 871","SAN FRANCISCO"],
-    ["05:55","BR 605","VANCOUVER"],
-    ["06:15","CI 061","NEW YORK JFK"],
-    ["06:35","JX 201","LOS ANGELES"],
-    ["06:50","BR 061","VIENNA"],
-    ["07:05","CI 071","LONDON LHR"],
-    ["07:20","EK 366","DUBAI"],
-    ["07:40","QR 914","DOHA"],
-    ["07:55","TK 024","ISTANBUL"],
-    ["08:10","CX 464","HONG KONG"],
-    ["08:25","IT 611","MACAU"],
-    ["08:40","BR 801","HONG KONG"],
-    ["08:55","CI 582","XIAMEN"],
-    ["09:10","JX 801","TOKYO NRT"],
-    ["09:25","NH 851","TOKYO NRT"],
-    ["09:40","CI 151","TOKYO NRT",["JL 5801","KL 5002"]],
-    ["09:55","BR 171","SEOUL ICN"],
-    ["10:10","KE 691","SEOUL ICN"],
-    ["10:25","JL 801","TOKYO NRT"],
-    ["10:40","CI 101","TOKYO HND"],
-    ["10:55","BR 107","TOKYO HND"],
-    ["11:10","IT 201","NAGOYA NGO"],
-    ["11:25","SQ 878","SINGAPORE"],
-    ["11:40","BR 225","SINGAPORE"],
-    ["11:55","TG 634","BANGKOK BKK"],
-    ["12:10","CI 829","HONG KONG"],
-    ["12:25","JX 719","MANILA MNL"],
-    ["12:40","PR 896","MANILA MNL"],
-    ["12:55","BR 131","FUKUOKA FUK"],
-    ["13:10","CI 115","OSAKA KIX"],
-    ["13:25","IT 281","OSAKA KIX"],
-    ["13:40","MH 366","KUALA LUMPUR",["CI 9066"]],
-    ["13:55","VN 576","HO CHI MINH"],
-    ["14:15","BR 255","BANGKOK BKK"],
-    ["14:30","JX 739","SINGAPORE"],
-    ["14:45","CI 659","HO CHI MINH"],
-    ["15:00","BR 871","SHANGHAI PVG"],
-    ["15:15","CI 501","HONG KONG"],
-    ["15:30","IT 235","SAPPORO CTS"],
-    ["15:45","JX 825","FUKUOKA FUK"],
-    ["16:00","BR 191","SEOUL ICN"],
-    ["16:15","CI 619","HANOI HAN"],
-    ["16:30","CX 466","HONG KONG"],
-    ["16:45","BR 211","JAKARTA CGK"],
-    ["17:00","JX 809","TOKYO HND"],
-    ["17:15","CI 129","NAGOYA NGO"],
-    ["17:30","BR 387","GUANGZHOU"],
-    ["17:45","IT 703","DA NANG"],
-    ["18:00","CI 917","HONG KONG"],
-    ["18:15","JX 753","PHUKET"],
-    ["18:30","BR 235","KUALA LUMPUR"],
-    ["18:45","CI 851","SHANGHAI PVG"],
-    ["19:00","OZ 711","SEOUL ICN"],
-    ["19:15","BR 127","OKINAWA OKA"],
-    ["19:30","JX 779","MACAU"],
-    ["19:45","CI 709","PHNOM PENH"],
-    ["20:00","BR 715","BANGKOK BKK"],
-    ["20:20","CI 201","TOKYO NRT"],
-    ["20:35","JX 727","HO CHI MINH"],
-    ["20:50","BR 891","HONG KONG"],
-    ["21:05","CI 175","TOKYO HND"],
-    ["21:20","IT 267","OSAKA KIX"],
-    ["21:35","BR 761","SINGAPORE"],
-    ["21:50","SQ 874","SINGAPORE"],
-    ["22:05","CI 837","HONG KONG"],
-    ["22:20","JX 849","SEOUL ICN"],
-    ["22:40","BR 395","SHENZHEN"],
-    ["22:55","CI 853","SHANGHAI PVG"],
-    ["23:10","BR 117","TOKYO NRT"],
-    ["23:25","JX 819","OSAKA KIX"],
-    ["23:45","CI 165","TOKYO NRT"]
+    ["04:45","BR 031","LOS ANGELES","A5"],
+    ["05:10","CI 021","LOS ANGELES","D5"],
+    ["05:35","UA 871","SAN FRANCISCO","C1"],
+    ["05:55","BR 605","VANCOUVER","D3"],
+    ["06:15","CI 061","NEW YORK JFK","D9"],
+    ["06:35","JX 201","LOS ANGELES","B9"],
+    ["06:50","BR 061","VIENNA","D8"],
+    ["07:05","CI 071","LONDON LHR","A1"],
+    ["07:20","EK 366","DUBAI","D3"],
+    ["07:40","QR 914","DOHA","B3"],
+    ["07:55","TK 024","ISTANBUL","B9"],
+    ["08:10","CX 464","HONG KONG","B4"],
+    ["08:25","IT 611","MACAU","B9"],
+    ["08:40","BR 801","HONG KONG","B1"],
+    ["08:55","CI 582","XIAMEN","D8"],
+    ["09:10","JX 801","TOKYO NRT","D6"],
+    ["09:25","NH 851","TOKYO NRT","A8"],
+    ["09:40","CI 151","TOKYO NRT","D9",["JL 5801","KL 5002"]],
+    ["09:55","BR 171","SEOUL ICN","B1"],
+    ["10:10","KE 691","SEOUL ICN","A4"],
+    ["10:25","JL 801","TOKYO NRT","D3"],
+    ["10:40","CI 101","TOKYO HND","C4"],
+    ["10:55","BR 107","TOKYO HND","A9"],
+    ["11:10","IT 201","NAGOYA NGO","A4"],
+    ["11:25","SQ 878","SINGAPORE","D4"],
+    ["11:40","BR 225","SINGAPORE","B1"],
+    ["11:55","TG 634","BANGKOK BKK","A3"],
+    ["12:10","CI 829","HONG KONG","D3"],
+    ["12:25","JX 719","MANILA MNL","D5"],
+    ["12:40","PR 896","MANILA MNL","B2"],
+    ["12:55","BR 131","FUKUOKA FUK","B6"],
+    ["13:10","CI 115","OSAKA KIX","D9"],
+    ["13:25","IT 281","OSAKA KIX","A3"],
+    ["13:40","MH 366","KUALA LUMPUR","A8",["CI 9066"]],
+    ["13:55","VN 576","HO CHI MINH","C8"],
+    ["14:15","BR 255","BANGKOK BKK","A4"],
+    ["14:30","JX 739","SINGAPORE","B7"],
+    ["14:45","CI 659","HO CHI MINH","A4"],
+    ["15:00","BR 871","SHANGHAI PVG","A8"],
+    ["15:15","CI 501","HONG KONG","C8"],
+    ["15:30","IT 235","SAPPORO CTS","D2"],
+    ["15:45","JX 825","FUKUOKA FUK","B3"],
+    ["16:00","BR 191","SEOUL ICN","D3"],
+    ["16:15","CI 619","HANOI HAN","A9"],
+    ["16:30","CX 466","HONG KONG","D6"],
+    ["16:45","BR 211","JAKARTA CGK","A5"],
+    ["17:00","JX 809","TOKYO HND","D5"],
+    ["17:15","CI 129","NAGOYA NGO","A5"],
+    ["17:30","BR 387","GUANGZHOU","C1"],
+    ["17:45","IT 703","DA NANG","D2"],
+    ["18:00","CI 917","HONG KONG","B1"],
+    ["18:15","JX 753","PHUKET","B3"],
+    ["18:30","BR 235","KUALA LUMPUR","C2"],
+    ["18:45","CI 851","SHANGHAI PVG","C7"],
+    ["19:00","OZ 711","SEOUL ICN","C4"],
+    ["19:15","BR 127","OKINAWA OKA","C2"],
+    ["19:30","JX 779","MACAU","B2"],
+    ["19:45","CI 709","PHNOM PENH","A9"],
+    ["20:00","BR 715","BANGKOK BKK","B5"],
+    ["20:20","CI 201","TOKYO NRT","D5"],
+    ["20:35","JX 727","HO CHI MINH","C4"],
+    ["20:50","BR 891","HONG KONG","C1"],
+    ["21:05","CI 175","TOKYO HND","B6"],
+    ["21:20","IT 267","OSAKA KIX","A7"],
+    ["21:35","BR 761","SINGAPORE","C6"],
+    ["21:50","SQ 874","SINGAPORE","D9"],
+    ["22:05","CI 837","HONG KONG","C2"],
+    ["22:20","JX 849","SEOUL ICN","D9"],
+    ["22:40","BR 395","SHENZHEN","B9"],
+    ["22:55","CI 853","SHANGHAI PVG","A9"],
+    ["23:10","BR 117","TOKYO NRT","B1"],
+    ["23:25","JX 819","OSAKA KIX","A6"],
+    ["23:45","CI 165","TOKYO NRT","A5"]
   ];
 
-  var BACK_MIN = 60;        // 往前一小時：剛走掉的班次還留在板上
-  var WINDOW_MIN = 240;     // 往後四小時
+  /* 視窗前後各看多久 —— 出發和抵達的節奏不一樣：出發只要留一點剛走掉的，重點
+     在後面；抵達的人多半是來接機的，前面留久一點比較有用。 */
+  var DEP_BACK = 30,  DEP_AHEAD = 210;
+  var ARR_BACK = 60,  ARR_AHEAD = 120;
   var PAGE_EVERY = 25000;   // 每 25 秒翻下一頁，翻完回到最前面
 
   /* 台北沒有日光節約時間（1979 年就停了），所以固定 +8 是精確值，不必動用
@@ -1061,9 +1065,11 @@ body.fs .fshint.show{ opacity:1; }
 
   var BOARDS = [
     { id:"dep", tab:"出發", marquee:"DEPARTURES", head:"目的地 Destination",
-      table:DEMO ? DEP_TABLE : [], states:DEP_STATES, page:0 },
+      table:DEMO ? DEP_TABLE : [], states:DEP_STATES, page:0,
+      back:DEP_BACK, ahead:DEP_AHEAD },
     { id:"arr", tab:"抵達", marquee:"ARRIVALS",   head:"來自 From",
-      table:DEMO ? ARR_TABLE : [], states:ARR_STATES, page:0 }
+      table:DEMO ? ARR_TABLE : [], states:ARR_STATES, page:0,
+      back:ARR_BACK, ahead:ARR_AHEAD }
   ];
 
   /* 「其他」欄放得下幾個班號就放幾個，剩下的用 +n 帶過。三個共掛班號在 18 格裡
@@ -1096,11 +1102,14 @@ body.fs .fshint.show{ opacity:1; }
     for(var i = 0; i < b.table.length; i++){
       var f = b.table[i];
       var rel = (toMin(f[0]) - now + 1440) % 1440;
-      if(rel >= 1440 - BACK_MIN) rel -= 1440;
-      if(rel > WINDOW_MIN) continue;
+      if(rel >= 1440 - b.back) rel -= 1440;
+      if(rel > b.ahead) continue;
       var st = stateFor(b.states, rel);
-      // f[3] 是其他共掛班號（同一架飛機的另外幾個班號），放最後一欄
-      due.push([rel, [f[0], f[1], f[2], st[1], alsoText(f[3]), st[2]]]);
+      // f[3] 是登機門，f[4] 是其他共掛班號。舊格式（沒有登機門，第四個就是共掛
+      // 清單）也讀得進來，免得換版之後那一欄跑到登機門去。
+      var gate = typeof f[3] === "string" ? f[3] : "";
+      var also = Array.isArray(f[3]) ? f[3] : f[4];
+      due.push([rel, [f[0], f[1], f[2], st[1], gate, alsoText(also), st[2]]]);
     }
     due.sort(function(a, b){ return a[0] - b[0]; });
     return due.map(function(d){ return d[1]; });
@@ -1118,7 +1127,7 @@ body.fs .fshint.show{ opacity:1; }
     return {
       pages: pages,
       rows: list.slice(p * ROWS, p * ROWS + ROWS),
-      label: b.table.length ? "TPE " + hhmm(now - BACK_MIN) + "-" + hhmm(now + WINDOW_MIN) +
+      label: b.table.length ? "TPE " + hhmm(now - b.back) + "-" + hhmm(now + b.ahead) +
                               " · " + (p + 1) + " OF " + pages
                             : "NO LIVE TIMETABLE"
     };
@@ -1131,7 +1140,7 @@ body.fs .fshint.show{ opacity:1; }
 
      掛在牆上的看板不會有人去按重新整理，所以這裡自己定期回頭抓。 */
   var FEED = "data/timetable.json";
-  var FEED_EVERY = 5 * 60 * 1000;
+  var FEED_EVERY = 2 * 60 * 1000;   // 伺服器每 3 分鐘更新，這邊 2 分鐘回頭看一次
 
   /* 左下角的銘牌兼資料來源指示。內建示範班表一天只有七十幾班（真的 TPE 三百多
      班），不標出來的話板上班次少得莫名其妙，還會以為是程式漏了。 */
