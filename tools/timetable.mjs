@@ -27,7 +27,7 @@ const MIN_ROWS = 20;    // 比這還少就當作抓到壞資料，寧可留著�
 const MAX_ROWS = 1500;
 const DEST_N = 13;      // 目的地欄的格數，跟 board.html 的 COLS 對齊
 const FLIGHT_N = 7;
-const GATE_N = 4;
+const GATE_N = 3;      // TPE 的登機門最長是 C10 / D10
 
 // 一個欄位可以有好幾種寫法，由左往右找，全部找不到才算缺欄位
 const FIELDS = {
@@ -230,6 +230,10 @@ function convert(text){
       const lead = flights[0];
       // [時間, 班機, 目的地/來自, 登機門, 其他共掛班號]
       const others = flights.slice(1).map(f => f.flight);
+      if(lead.gate.length > GATE_N){
+        console.warn(`登機門「${lead.gate}」超過 ${GATE_N} 格會被切掉 —— ` +
+                     `GATE_N 和 board.html 的 COLS 要一起加寬`);
+      }
       const line = [lead.time, lead.flight, lead.dest, lead.gate.slice(0, GATE_N)];
       if(others.length) line.push(others);
       out[lead.bucket].push(line);
