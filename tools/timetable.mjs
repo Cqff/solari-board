@@ -217,6 +217,7 @@ function convert(text){
   const groups = new Map();
   const seen = new Set();
   let offDate = 0;
+  const offDays = new Map();
 
   for(const row of table.slice(1)){
     const kind = get(row, "kind");
@@ -235,6 +236,9 @@ function convert(text){
                                 get(row, "schedDate"), time);
     if(away !== null && (away < -KEEP_BACK_MIN || away > KEEP_AHEAD_MIN)){
       offDate++;
+      const day = String(get(row, useEst ? "estDate" : "schedDate") ||
+                         get(row, "schedDate")).trim();
+      offDays.set(day, (offDays.get(day) || 0) + 1);
       continue;
     }
 
@@ -283,6 +287,7 @@ function convert(text){
 
   if(offDate) console.log(`照日期濾掉 ${offDate} 筆（不在現在前 ${KEEP_BACK_MIN / 60} 小時到後 ${KEEP_AHEAD_MIN / 60} 小時之內）`);
 
+
   const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
   for(const k of ["departures", "arrivals"]){
     if(out[k].length > MAX_ROWS){
@@ -291,7 +296,10 @@ function convert(text){
   }
   return {
     departures: out.departures.sort(byTime).slice(0, MAX_ROWS),
-    arrivals:   out.arrivals.sort(byTime).slice(0, MAX_ROWS)
+    arrivals:   out.arrivals.sort(byTime).slice(0, MAX_ROWS),
+    // 給上面那道關卡判斷「是壞資料還是來源根本不是即時的」
+    offDate: offDate,
+    offDays: [...offDays.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
   };
 }
 
@@ -330,6 +338,13 @@ export async function fetchTimetable(src = SOURCE){
 
   // 這道關卡是防遠端回壞資料用的；拿本地檔案測欄位對照時不擋
   if(/^https?:/i.test(src) && total < MIN_ROWS){
+    if(t.offDate && t.offDate >= MIN_ROWS){
+      // 資料是有的，只是沒有一筆是今天的 —— 這個來源不是即時資料
+      const days = t.offDays.map(([d, n]) => `${d || "(空白)"} ${n} 筆`).join("、");
+      throw new Error(
+        `這個來源不是即時資料：${t.offDate} 筆全部都不是現在前後的班次（${days}）。\n` +
+        `班表沒有覆蓋，看板會維持原狀。用 --dates 看完整的日期分布。`);
+    }
     throw new Error("只轉出 " + total + " 筆（至少要 " + MIN_ROWS + " 筆），" +
                     "當作是壞資料，不覆蓋現有的班表");
   }
