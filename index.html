@@ -844,9 +844,12 @@ body.fs .fshint.show{ opacity:1; }
      兩面板共用同一套規則，只是一個看起飛、一個看抵達。每筆是
      [時間, 班機, 目的地或來自]，台北時間，照時刻排序。
 
-     這兩張是內建的示範班表：航空公司、航線、時段照著桃園機場平常的樣子排，但班號
-     與時刻不是官方公告的班表，別拿它趕飛機。接上 data/timetable.json 之後（見
-     下面的 loadTimetable 和 README）就會被官方資料換掉，這兩張只留著當退路。 */
+     下面這兩張是**編出來的**示範班表：航線和時段照著桃園機場平常的樣子排，但班號
+     與時刻都是假的，跟真的航班對不起來。
+
+     它們預設不會上板 —— 只有網址帶 ?demo 時才用，給截圖和改版面用的。沒有
+     ?demo 又抓不到 data/timetable.json 的話，板面就是空的，並且明講沒有資料。
+     一面掛在牆上的航班看板寧可空著，也不能理直氣壯地顯示假航班。 */
   var DEP_TABLE = [
     ["00:20","BR 067","VIENNA"],
     ["00:55","CI 073","LONDON LHR"],
@@ -1049,11 +1052,13 @@ body.fs .fshint.show{ opacity:1; }
   /* ---------- 兩面板 ----------
      出發和抵達除了資料和用語之外完全一樣：同樣的視窗、同樣的分段方式、同樣的
      翻頁輪播。頁碼各記各的，切過去接著自己的進度。 */
+  var DEMO = /[?&]demo\b/.test(location.search);
+
   var BOARDS = [
     { id:"dep", tab:"出發", marquee:"DEPARTURES", head:"目的地 Destination",
-      table:DEP_TABLE, states:DEP_STATES, page:0 },
+      table:DEMO ? DEP_TABLE : [], states:DEP_STATES, page:0 },
     { id:"arr", tab:"抵達", marquee:"ARRIVALS",   head:"來自 From",
-      table:ARR_TABLE, states:ARR_STATES, page:0 }
+      table:DEMO ? ARR_TABLE : [], states:ARR_STATES, page:0 }
   ];
 
   function stateFor(states, rel){
@@ -1091,8 +1096,9 @@ body.fs .fshint.show{ opacity:1; }
     return {
       pages: pages,
       rows: list.slice(p * ROWS, p * ROWS + ROWS),
-      label: "TPE " + hhmm(now - BACK_MIN) + "-" + hhmm(now + WINDOW_MIN) +
-             " · " + (p + 1) + " OF " + pages
+      label: b.table.length ? "TPE " + hhmm(now - BACK_MIN) + "-" + hhmm(now + WINDOW_MIN) +
+                              " · " + (p + 1) + " OF " + pages
+                            : "NO LIVE TIMETABLE"
     };
   }
 
@@ -1113,10 +1119,11 @@ body.fs .fshint.show{ opacity:1; }
     if(stamp){
       sourceEl.textContent = "TPE OPEN DATA · " + stamp;
       sourceEl.classList.remove("sample");
-    } else {
-      sourceEl.textContent = "SAMPLE TIMETABLE · NOT LIVE";
-      sourceEl.classList.add("sample");
+      return;
     }
+    sourceEl.textContent = DEMO ? "SAMPLE TIMETABLE · MADE UP, NOT REAL FLIGHTS"
+                                : "NO FEED · RUN tools/serve.mjs";
+    sourceEl.classList.add("sample");
   }
 
   // ISO 時間 → 台北時間的 hh:mm

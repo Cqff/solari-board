@@ -7,7 +7,10 @@
 
 ## 線上版
 
-GitHub Pages: <https://cqff.github.io/solari-board/>
+GitHub Pages: <https://cqff.github.io/solari-board/?demo>
+
+線上版沒有資料來源，所以那個網址帶了 `?demo` —— 板上跑的是**編出來的**示範班表，
+只是給人看看這東西長什麼樣子。要真的班次得在本地跑（見下面「接上官方即時航班」）。
 
 ## 操作
 
@@ -25,10 +28,16 @@ GitHub Pages: <https://cqff.github.io/solari-board/>
 
 ## 班表與輪播
 
-看板只把「前 1 小時到後 4 小時」那一段畫出來。班表有兩個來源：`tools/serve.mjs`
-跑起來之後用它產生的 `data/timetable.json`（見下一節），抓不到就用 `src/board.html`
-裡內建的 `DEP_TABLE` 和 `ARR_TABLE`。格式都一樣，每筆是
-`[時間, 班機, 目的地或來自]`，台北時間，照時刻排序：
+看板只把「前 1 小時到後 4 小時」那一段畫出來。班表來自 `tools/serve.mjs` 產生的
+`data/timetable.json`（見下一節）。**抓不到就是空的**：副標會寫 `NO LIVE TIMETABLE`，
+左下角寫 `NO FEED`，板上一班都不會有。一面掛在牆上的航班看板寧可空著，也不能理
+直氣壯地顯示假航班。
+
+`src/board.html` 裡的 `DEP_TABLE` / `ARR_TABLE` 是**編出來的**示範班表 —— 航線和
+時段照 TPE 的樣子排，但班號時刻都是假的，跟真的航班對不起來。它預設不會上板，
+只有網址帶 `?demo` 時才用，給截圖和改版面用。
+
+三種班表的格式都一樣，每筆是 `[時間, 班機, 目的地或來自]`，台北時間，照時刻排序：
 
 ```js
 var DEP_TABLE = [ ["09:20", "JX 802", "TOKYO NRT"], /* ... */ ];
@@ -92,17 +101,20 @@ node tools/serve.mjs
 ```
 
 看板自己每 5 分鐘回頭抓那個檔案，所以**不用重新整理**，班表換了就會自己翻上去。
-抓不到（對方掛了、網路斷了）就留著上一版，再不行就用內建的示範班表 —— 板面不會
-開天窗。
+抓不到（對方掛了、網路斷了）就留著上一版繼續顯示 —— 銘牌上的時間就說明了資料
+有多舊。從頭到尾沒抓到過的話，板面是空的。
 
-**板面左下角會寫現在用的是哪一份**：接上官方資料是 `TPE OPEN DATA · 14:02`
-（後面是這份資料抓下來的台北時間），沒接上就是琥珀色的
-`SAMPLE TIMETABLE · NOT LIVE`。
+**板面左下角的銘牌會照實寫現在用的是哪一份**：
 
-看到 `SAMPLE TIMETABLE` 就表示班次會少得不合理 —— 內建那張一天只有七十幾班，
-真的 TPE 一天三百多班出發，晚上尖峰同一分鐘就可能有四五班。常見原因有兩個：
-沒有透過 `tools/serve.mjs` 開（直接點 `index.html` 的話瀏覽器不准抓旁邊的檔案），
-或者官方那台當下抓不到（伺服器的 log 會寫）。單獨測抓得到抓不到：
+| 銘牌 | 意思 |
+| --- | --- |
+| `TPE OPEN DATA · 14:02` | 官方資料，後面是這份資料抓下來的台北時間 |
+| `NO FEED · RUN tools/serve.mjs` | 沒抓到，板上是空的 |
+| `SAMPLE TIMETABLE · MADE UP, NOT REAL FLIGHTS` | `?demo`，板上是假航班 |
+
+看到後面兩種，就表示板上的東西不能拿來趕飛機。抓不到最常見的兩個原因：沒有透過
+`tools/serve.mjs` 開（直接點 `index.html` 的話瀏覽器不准它抓旁邊的檔案），或者官
+方那台當下連不上（伺服器的 log 會寫）。單獨測抓得到抓不到：
 
 ```bash
 node tools/serve.mjs --port 9000 --every 5     # 換埠號、改成 5 分鐘一次
