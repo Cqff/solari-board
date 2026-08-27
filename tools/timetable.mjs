@@ -22,7 +22,9 @@ const SOURCE = process.env.TIMETABLE_URL ||
   "https://odp.taoyuan-airport.com/dataset/2023081816?format=csv";
 
 const MIN_ROWS = 20;    // 比這還少就當作抓到壞資料，寧可留著上一版
-const MAX_ROWS = 400;   // 看板一次只顯示 10 行，整天的班次也用不到這麼多
+// 純粹是防呆上限。TPE 一天三百多班出發，設 400 的話遇到含隔日班次的資料就會從
+// 最晚的那些開始被切掉 —— 排序是照時刻的，切尾巴等於把深夜的班次砍光。
+const MAX_ROWS = 1500;
 const DEST_N = 13;      // 目的地欄的格數，跟 board.html 的 COLS 對齊
 const FLIGHT_N = 7;
 
@@ -185,6 +187,11 @@ function convert(text){
   }
 
   const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+  for(const k of ["departures", "arrivals"]){
+    if(out[k].length > MAX_ROWS){
+      console.warn(`${k} 有 ${out[k].length} 筆，超過上限 ${MAX_ROWS}，最晚的那些會被切掉`);
+    }
+  }
   return {
     departures: out.departures.sort(byTime).slice(0, MAX_ROWS),
     arrivals:   out.arrivals.sort(byTime).slice(0, MAX_ROWS)

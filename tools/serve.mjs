@@ -9,10 +9,11 @@
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fetchTimetable, writeTimetable, FetchFailed, SOURCE } from "./timetable.mjs";
+import { fetchTimetable, writeTimetable, FetchFailed, SOURCE, OUT } from "./timetable.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,7 +40,11 @@ async function refresh(){
   }catch(err){
     // 抓不到就留著上一版 —— 看板寧可顯示舊班表也不要開天窗
     console.warn(`[${clock()}] ${err.message}` +
-                 (err instanceof FetchFailed ? "，留著上一版，等下一輪" : ""));
+                 (err instanceof FetchFailed ? "，等下一輪" : ""));
+    if(!existsSync(OUT)){
+      console.warn("      還沒有 data/timetable.json，看板現在用的是內建示範班表" +
+                   "（一天七十幾班，真的 TPE 三百多班）。板面左下角會寫 SAMPLE TIMETABLE。");
+    }
   }
 }
 

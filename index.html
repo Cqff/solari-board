@@ -115,6 +115,8 @@ body{
 .stampline{
   font-family:var(--f-data); font-size:10px; letter-spacing:.10em; color:var(--ink-faint);
 }
+/* 用內建示範班表時要看得出來 —— 不然板上班次少得莫名其妙 */
+.stampline.sample{ color:var(--amber-deep); }
 .sign .sub{
   font-family:var(--f-data); font-size:10.5px; letter-spacing:.06em; color:var(--ink-dim);
 }
@@ -417,7 +419,7 @@ body.fs .fshint.show{ opacity:1; }
   </div>
 
   <div class="rail foot">
-    <span class="stampline">MECHANICAL DISPLAY UNIT · REV 2</span>
+    <span class="stampline" id="source">MECHANICAL DISPLAY UNIT · REV 2</span>
     <span class="stampline" id="perf">IDLE</span>
     <span class="stampline" id="stamp">STANDBY</span>
   </div>
@@ -1103,6 +1105,28 @@ body.fs .fshint.show{ opacity:1; }
   var FEED = "data/timetable.json";
   var FEED_EVERY = 5 * 60 * 1000;
 
+  /* 左下角的銘牌兼資料來源指示。內建示範班表一天只有七十幾班（真的 TPE 三百多
+     班），不標出來的話板上班次少得莫名其妙，還會以為是程式漏了。 */
+  var sourceEl = document.getElementById("source");
+
+  function markSource(stamp){
+    if(stamp){
+      sourceEl.textContent = "TPE OPEN DATA · " + stamp;
+      sourceEl.classList.remove("sample");
+    } else {
+      sourceEl.textContent = "SAMPLE TIMETABLE · NOT LIVE";
+      sourceEl.classList.add("sample");
+    }
+  }
+
+  // ISO 時間 → 台北時間的 hh:mm
+  function tpeStamp(iso){
+    var d = new Date(iso);
+    if(!iso || isNaN(d.getTime())) return "";
+    var t = new Date(d.getTime() + (d.getTimezoneOffset() + TPE_OFFSET) * 60000);
+    return pad2(t.getHours()) + ":" + pad2(t.getMinutes());
+  }
+
   function loadTimetable(){
     if(!window.fetch) return;
     fetch(FEED + "?t=" + Math.floor(Date.now() / 60000), { cache:"no-store" })
@@ -1110,11 +1134,14 @@ body.fs .fshint.show{ opacity:1; }
       .then(function(data){
         if(!data) return;
         var dep = data.departures || data.rows;    // rows 是還沒分出發抵達前的名字
-        if(dep && dep.length >= 5) BOARDS[0].table = dep;
-        if(data.arrivals && data.arrivals.length >= 5) BOARDS[1].table = data.arrivals;
+        var got = false;
+        if(dep && dep.length >= 5){ BOARDS[0].table = dep; got = true; }
+        if(data.arrivals && data.arrivals.length >= 5){ BOARDS[1].table = data.arrivals; got = true; }
+        if(!got) return;                           // 檔案在但內容不成班表，當作沒抓到
+        markSource(tpeStamp(data.generated) || "?");
         paintFlights();            // 換完馬上對一次，沒變就什麼都不會動
       })
-      .catch(function(){});
+      .catch(function(){});        // 抓不到就留在原本那份，銘牌照實寫
   }
 
   function pad2(x){ return String(x).length < 2 ? "0" + x : String(x); }
@@ -1396,6 +1423,7 @@ body.fs .fshint.show{ opacity:1; }
   }
 
   /* ---------- opening sequence ---------- */
+  markSource("");
   loadTimetable();
   setInterval(loadTimetable, FEED_EVERY);
   fit();

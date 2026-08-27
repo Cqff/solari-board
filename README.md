@@ -95,6 +95,15 @@ node tools/serve.mjs
 抓不到（對方掛了、網路斷了）就留著上一版，再不行就用內建的示範班表 —— 板面不會
 開天窗。
 
+**板面左下角會寫現在用的是哪一份**：接上官方資料是 `TPE OPEN DATA · 14:02`
+（後面是這份資料抓下來的台北時間），沒接上就是琥珀色的
+`SAMPLE TIMETABLE · NOT LIVE`。
+
+看到 `SAMPLE TIMETABLE` 就表示班次會少得不合理 —— 內建那張一天只有七十幾班，
+真的 TPE 一天三百多班出發，晚上尖峰同一分鐘就可能有四五班。常見原因有兩個：
+沒有透過 `tools/serve.mjs` 開（直接點 `index.html` 的話瀏覽器不准抓旁邊的檔案），
+或者官方那台當下抓不到（伺服器的 log 會寫）。單獨測抓得到抓不到：
+
 ```bash
 node tools/serve.mjs --port 9000 --every 5     # 換埠號、改成 5 分鐘一次
 node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
@@ -110,7 +119,8 @@ node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
 印出來再結束。要單獨測轉檔：
 
 ```bash
-node tools/fetch-timetable.mjs some.csv   # 抓一次就結束，不起 server
+node tools/fetch-timetable.mjs            # 抓一次就結束，印出抓到幾筆或錯在哪
+node tools/fetch-timetable.mjs some.csv   # 吃本地 CSV，不連網
 ```
 
 ### 開機自己跑
