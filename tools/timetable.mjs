@@ -262,6 +262,13 @@ function csvRecords(text){
 
 /* 中間格式 → 看板要的兩份班表。日期過濾和共掛合併都在這裡，所以 CSV 和 TDX
    兩條路的行為一致。 */
+/* IATA 的班機代號是「航空公司代碼 + 1~4 位數字 + 可選的一個字母」，最後那個字母
+   是 operational suffix —— 航空公司用來區分同一個班號的作業變體（換機型、改航路
+   之類），排班系統和機場之間交換資料時才有意義。它不是班號的一部分：旅客的機票、
+   訂位系統、機場的旅客看板都只寫數字。TDX 的資料是從機場的 FIDS 來的，所以會帶
+   著它 —— BR 26D 其實就是 BR 26。 */
+const publicNumber = f => f.replace(/^([A-Z0-9]{2,3} ?)(\d{1,4})[A-Z]$/, "$1$2");
+
 function assemble(records){
   const out = { departures: [], arrivals: [] };
   const groups = new Map();
@@ -270,6 +277,8 @@ function assemble(records){
   const offDays = new Map();
 
   for(const r of records){
+    r.flight = publicNumber(r.flight);
+
     // 別天的班次不要混進來（日期讀不出來就不判斷，寧可多留也不要整份濾空）
     const away = minutesFromNow(r.date, r.time);
     if(away !== null && (away < -KEEP_BACK_MIN || away > KEEP_AHEAD_MIN)){
