@@ -100,20 +100,11 @@ body{
   background:linear-gradient(180deg,rgba(0,0,0,.22),rgba(255,255,255,.015));
 }
 
-.sign{ display:flex; align-items:baseline; gap:10px; min-width:0; }
-.sign .mark{
-  font-family:var(--f-sign); font-weight:600; font-size:13px;
-  letter-spacing:.20em; text-transform:uppercase; color:var(--ink);
-}
 .stampline{
   font-family:var(--f-data); font-size:10px; letter-spacing:.10em; color:var(--ink-faint);
 }
 /* 用內建示範班表時要看得出來 —— 不然板上班次少得莫名其妙 */
 .stampline.sample{ color:var(--amber-deep); }
-.sign .sub{
-  font-family:var(--f-data); font-size:10.5px; letter-spacing:.06em; color:var(--ink-dim);
-}
-
 .lamp{
   width:6px; height:6px; border-radius:50%; flex:none;
   background:var(--amber);
@@ -125,11 +116,6 @@ body{
 .lamp.live{ animation:breathe 2.6s ease-in-out infinite; }
 @keyframes breathe{ 0%,100%{opacity:1} 50%{opacity:.32} }
 
-.clockwrap{ display:flex; align-items:center; gap:10px; }
-.clockwrap .cap{
-  font-family:var(--f-data); font-size:10px; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--ink-faint);
-}
 
 .stage{
   position:relative;
@@ -360,8 +346,6 @@ body.fs .stage{
   padding:clamp(10px,2vh,30px) clamp(14px,2vw,40px);
 }
 body.fs .rail{ padding:clamp(8px,1.4vh,18px) clamp(16px,2vw,40px); }
-body.fs .sign .mark{ font-size:clamp(12px,1.1vw,18px); }
-body.fs .clockwrap .cap,
 body.fs .stampline{ font-size:clamp(9px,.72vw,13px); }
 body.fs .colhead{ font-size:clamp(8px,.62vw,12px); }
 
@@ -386,18 +370,6 @@ body.fs .fshint.show{ opacity:1; }
 
 <div class="housing">
   <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
-
-  <div class="rail">
-    <div class="sign">
-      <span class="mark">Platform 01</span>
-      <span class="sub">SOLARI · 44-FLAP DRUM</span>
-    </div>
-    <div class="clockwrap">
-      <span class="lamp live"></span>
-      <span class="cap">Taipei</span>
-      <div class="line" id="clock"></div>
-    </div>
-  </div>
 
   <div class="stage">
     <div class="marquee-block">
@@ -836,8 +808,10 @@ body.fs .fshint.show{ opacity:1; }
   })();
 
   var marquee = new Line(14, "lg", document.getElementById("marquee"));
-  var subline = new Line(28, "sm", document.getElementById("subline"));
-  var clock = new Line(8, "sm", document.getElementById("clock"), NUMS);
+  /* 大字列下面那條現在是時鐘。用 NUMS（13 片）而不是 DRUM（50 片）：秒數每秒都
+     要翻，用大鼓的話每一秒都得轉大半圈，吵又費力。「TAIPEI」那幾個字母不在 NUMS
+     上，會在第一次寫入時插進那幾格自己的鼓裡，之後就不動了。 */
+  var subline = new Line(28, "sm", document.getElementById("subline"), NUMS);
 
   /* ---------- TPE 班表 ----------
      兩面板共用同一套規則，只是一個看起飛、一個看抵達。每筆是
@@ -1110,14 +1084,9 @@ body.fs .fshint.show{ opacity:1; }
     var pages = Math.max(1, Math.ceil(list.length / ROWS));
     var p = ((b.page % pages) + pages) % pages;
     b.page = p;
-    var now = tpeMinutes();
     return {
       pages: pages,
-      rows: list.slice(p * ROWS, p * ROWS + ROWS),
-      // 副標只寫時間窗，不寫第幾頁 —— 頁碼對看的人沒有意義，拿掉之後時間也
-      // 正好落在正中間
-      label: b.table.length ? "TPE " + hhmm(now - b.back) + "-" + hhmm(now + b.ahead)
-                            : "NO LIVE TIMETABLE"
+      rows: list.slice(p * ROWS, p * ROWS + ROWS)
     };
   }
 
@@ -1207,10 +1176,10 @@ body.fs .fshint.show{ opacity:1; }
 
   function paintFlights(){
     var view = flightPage(board);
-    var key = board.id + "|" + JSON.stringify(view.rows) + "|" + view.label;
+    // 沒有班表時不用在這裡講 —— 左下角的銘牌已經寫著 NO FEED 了
+    var key = board.id + "|" + JSON.stringify(view.rows);
     if(key === lastPaint) return;
     lastPaint = key;
-    subline.write(view.label, { center:true, stagger:BEAT * 0.12, jitter:BEAT * 0.3, base:BEAT });
     writeRows(view.rows);
     stampNow();
   }
@@ -1223,6 +1192,7 @@ body.fs .fshint.show{ opacity:1; }
   // 整面換過去：大字列、那一欄的標題，還有板面本身
   function showBoard(b){
     if(b) board = b;
+    subMode = "clock";
     marquee.write(board.marquee, { center:true, stagger:BEAT * 0.3, jitter:BEAT * 0.3 });
     headEls[2].textContent = board.head;
     var tabs = document.querySelectorAll(".chan");
@@ -1234,12 +1204,19 @@ body.fs .fshint.show{ opacity:1; }
   }
 
   /* ---------- clock ----------
-     The board runs on TPE time, so the minute the clock rolls over is exactly
-     when a flight can change state — refresh off that instead of polling. */
+     時鐘就在大字列下面。跑的是台北時間，所以整分跳的那一刻正好就是班次可能換狀
+     態的那一刻 —— 直接踩它，不用另外開輪詢。
+
+     打字上板時那條線借去顯示 CUSTOM MESSAGE，時鐘先讓位。 */
   var lastMin = -1;
+  var subMode = "clock";
+
   function tickClock(){
     var t = tpeNow();
-    clock.write(pad2(t.getHours()) + ":" + pad2(t.getMinutes()) + ":" + pad2(t.getSeconds()), { stagger:0, jitter:0 });
+    if(subMode === "clock"){
+      subline.write("TAIPEI " + pad2(t.getHours()) + ":" + pad2(t.getMinutes()) + ":" +
+                    pad2(t.getSeconds()), { center:true, stagger:0, jitter:0 });
+    }
     var m = t.getHours() * 60 + t.getMinutes();
     if(m !== lastMin){
       lastMin = m;
@@ -1265,6 +1242,7 @@ body.fs .fshint.show{ opacity:1; }
     // 沒有頻道可以切回來了，所以留空送出就是還原成班表
     if(!v){ showBoard(); return; }   // 留空送出＝還原成班表
     if(!/[^\x00-\x7F]/.test(v)) v = v.toUpperCase();
+    subMode = "custom";              // 時鐘先讓位給訊息
     marquee.write(v, { center:true, stagger:24, jitter:120 });
     subline.write("CUSTOM MESSAGE", { center:true, stagger:10, jitter:150 });
     lastPaint = "";               // 還原時整面重畫，不要被「沒變」擋掉
