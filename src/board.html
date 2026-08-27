@@ -782,7 +782,7 @@ body.fs .fshint.show{ opacity:1; }
 
   var COLS = [
     { key:"time",   n:5,  head:"時間 Time",          drum:NUMS },
-    { key:"flight", n:7,  head:"班機 Flight",        drum:DRUM },
+    { key:"flight", n:9,  head:"班機 Flight",        drum:DRUM },
     { key:"body",   n:13, head:"目的地 Destination", drum:DRUM },
     { key:"status", n:9,  head:"狀態 Status",        drum:DRUM }
   ];
@@ -856,7 +856,7 @@ body.fs .fshint.show{ opacity:1; }
     ["07:35","IT 610","MACAU"],
     ["07:50","BR 108","TOKYO HND"],
     ["08:05","JX 720","MANILA MNL"],
-    ["08:20","CI 100","TOKYO HND"],
+    ["08:20","CI 100","TOKYO HND",2],
     ["08:35","TG 635","BANGKOK BKK"],
     ["08:50","BR 226","SINGAPORE"],
     ["09:05","CI 830","HONG KONG"],
@@ -864,7 +864,7 @@ body.fs .fshint.show{ opacity:1; }
     ["09:35","IT 202","NAGOYA NGO"],
     ["09:50","BR 132","FUKUOKA FUK"],
     ["10:05","CI 660","HO CHI MINH"],
-    ["10:20","MH 367","KUALA LUMPUR"],
+    ["10:20","MH 367","KUALA LUMPUR",1],
     ["10:35","BR 256","BANGKOK BKK"],
     ["10:50","CI 116","OSAKA KIX"],
     ["11:10","JX 740","SINGAPORE"],
@@ -892,7 +892,7 @@ body.fs .fshint.show{ opacity:1; }
     ["16:55","BR 236","KUALA LUMPUR"],
     ["17:10","CI 852","SHANGHAI PVG"],
     ["17:25","IT 250","TOKYO NRT"],
-    ["17:40","JL 802","TOKYO NRT"],
+    ["17:40","JL 802","TOKYO NRT",3],
     ["17:55","BR 128","OKINAWA OKA"],
     ["18:10","CI 710","PHNOM PENH"],
     ["18:30","EK 367","DUBAI"],
@@ -937,7 +937,7 @@ body.fs .fshint.show{ opacity:1; }
     ["08:55","CI 582","XIAMEN"],
     ["09:10","JX 801","TOKYO NRT"],
     ["09:25","NH 851","TOKYO NRT"],
-    ["09:40","CI 151","TOKYO NRT"],
+    ["09:40","CI 151","TOKYO NRT",2],
     ["09:55","BR 171","SEOUL ICN"],
     ["10:10","KE 691","SEOUL ICN"],
     ["10:25","JL 801","TOKYO NRT"],
@@ -953,7 +953,7 @@ body.fs .fshint.show{ opacity:1; }
     ["12:55","BR 131","FUKUOKA FUK"],
     ["13:10","CI 115","OSAKA KIX"],
     ["13:25","IT 281","OSAKA KIX"],
-    ["13:40","MH 366","KUALA LUMPUR"],
+    ["13:40","MH 366","KUALA LUMPUR",1],
     ["13:55","VN 576","HO CHI MINH"],
     ["14:15","BR 255","BANGKOK BKK"],
     ["14:30","JX 739","SINGAPORE"],
@@ -1070,7 +1070,10 @@ body.fs .fshint.show{ opacity:1; }
       if(rel >= 1440 - BACK_MIN) rel -= 1440;
       if(rel > WINDOW_MIN) continue;
       var st = stateFor(b.states, rel);
-      due.push([rel, [f[0], f[1], f[2], st[1], st[2]]]);
+      // f[3] 是共掛班號的數量。同一架飛機在官方資料裡拆成好幾筆，合成一列之後
+      // 用 +n 帶出來 —— 欄寬放不下兩個完整班號，這樣至少看得出來還有別的班號。
+      var flight = f[1] + (f[3] ? " +" + f[3] : "");
+      due.push([rel, [f[0], flight, f[2], st[1], st[2]]]);
     }
     due.sort(function(a, b){ return a[0] - b[0]; });
     return due.map(function(d){ return d[1]; });
