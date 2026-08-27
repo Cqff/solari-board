@@ -22,6 +22,13 @@ const SOURCE = process.env.TIMETABLE_URL ||
   "https://odp.taoyuan-airport.com/dataset/2023081816?format=csv";
 
 const MIN_ROWS = 20;    // 比這還少就當作抓到壞資料，寧可留著上一版
+
+// 即時航班那份不是只有今天：昨天的晚班、明天的早班都在裡面。看板把班表當成
+// 「每天都一樣」在用，只取 HH:MM，所以不先照日期濾掉的話，別天的班次會像今天
+// 的班一樣上板 —— 連停飛前的舊班次都可能混進來。留現在前後這個範圍就夠了，
+// 板上最寬的窗是往後 210 分鐘，而且這個檔案每三分鐘就重產一次。
+const KEEP_BACK_MIN = 3 * 60;
+const KEEP_AHEAD_MIN = 8 * 60;
 // 純粹是防呆上限。TPE 一天三百多班出發，設 400 的話遇到含隔日班次的資料就會從
 // 最晚的那些開始被切掉 —— 排序是照時刻的，切尾巴等於把深夜的班次砍光。
 const MAX_ROWS = 1500;
@@ -34,8 +41,10 @@ const FIELDS = {
   kind:     ["種類", "類別", "kind", "type", "arrdep"],
   airline:  ["航空公司代碼", "航空公司", "airlineCode", "airline"],
   number:   ["班次", "航班編號", "班機編號", "flightNumber", "flightNo", "flight"],
-  sched:    ["表訂時間", "預定時間", "scheduleTime", "schTime", "std"],
-  est:      ["預計時間", "estimateTime", "estTime", "etd"],
+  sched:     ["表訂時間", "預定時間", "scheduleTime", "schTime", "std"],
+  est:       ["預計時間", "estimateTime", "estTime", "etd"],
+  schedDate: ["表訂日期", "預定日期", "scheduleDate", "schDate"],
+  estDate:   ["預計日期", "estimateDate", "estDate"],
   destEn:   ["往來地點英文", "目的地英文", "airPortNameEnglish"],
   destZh:   ["往來地點中文", "目的地", "airPortNameChinese"],
   destCode: ["往來地點", "航點", "airPort", "airportCode"],
@@ -131,6 +140,28 @@ function mapColumns(header){
 
 const pad2 = n => String(n).padStart(2, "0");
 
+// 台北沒有日光節約，固定 +8 就是精確值。回傳的是「台北牆上時鐘」對應的毫秒數，
+// 只拿來跟同樣算法的班次時間相減。
+function tpeNowMs(){
+  return Date.now() + 8 * 60 * 60 * 1000;
+}
+
+// "2026-08-27" / "2026/8/27" / "20260827" → [年, 月, 日]
+function ymd(v){
+  const d = String(v || "").replace(/\D/g, "");
+  if(d.length !== 8) return null;
+  return [+d.slice(0, 4), +d.slice(4, 6), +d.slice(6, 8)];
+}
+
+// 這一班離現在多少分鐘（照台北時間算）。日期讀不出來就回 null = 不判斷
+function minutesFromNow(dateVal, time){
+  const parts = ymd(dateVal);
+  if(!parts) return null;
+  const when = Date.UTC(parts[0], parts[1] - 1, parts[2],
+                        +time.slice(0, 2), +time.slice(3, 5));
+  return (when - tpeNowMs()) / 60000;
+}
+
 function hhmm(v){
   const s = String(v || "").trim();
   const m = s.match(/(\d{1,2}):(\d{2})/);
@@ -185,6 +216,7 @@ function convert(text){
   // 兩筆的登機門都有值又不一樣的話就當成兩班不同的飛機，不合併。
   const groups = new Map();
   const seen = new Set();
+  let offDate = 0;
 
   for(const row of table.slice(1)){
     const kind = get(row, "kind");
@@ -194,8 +226,17 @@ function convert(text){
 
     // 誤點的話，會動的是預計時間 —— 看板是拿這個時間倒數的（抵達也一樣），
     // 所以有就用它
+    const useEst = !!hhmm(get(row, "est"));
     const time = hhmm(get(row, "est")) || hhmm(get(row, "sched"));
     if(!time) continue;
+
+    // 別天的班次不要混進來（日期欄讀不出來就不判斷，寧可多留也不要整份濾空）
+    const away = minutesFromNow(get(row, useEst ? "estDate" : "schedDate") ||
+                                get(row, "schedDate"), time);
+    if(away !== null && (away < -KEEP_BACK_MIN || away > KEEP_AHEAD_MIN)){
+      offDate++;
+      continue;
+    }
 
     const code = get(row, "airline").toUpperCase().replace(/\s+/g, "");
     let num = get(row, "number").toUpperCase().replace(/\s+/g, "");
@@ -239,6 +280,8 @@ function convert(text){
       out[lead.bucket].push(line);
     }
   }
+
+  if(offDate) console.log(`照日期濾掉 ${offDate} 筆（不在現在前 ${KEEP_BACK_MIN / 60} 小時到後 ${KEEP_AHEAD_MIN / 60} 小時之內）`);
 
   const byTime = (a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
   for(const k of ["departures", "arrivals"]){
@@ -305,6 +348,59 @@ export async function writeTimetable(t){
   await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, render(t), "utf8");
   return true;
+}
+
+/* 查某個班次在原始 CSV 裡長什麼樣子 —— 板上出現看不懂的班次時，這是唯一能分辨
+   「官方資料就這樣寫」還是「我轉錯了」的辦法。 */
+export async function findRaw(src, needle){
+  const table = parseCsv(decode(await grab(src)));
+  const flat = v => String(v).toUpperCase().replace(/\s+/g, "");
+  const want = flat(needle);
+
+  // 「JX721」在 CSV 裡是拆成兩欄的，中間還隔著航空公司中文名，所以整列黏起來也
+  // 湊不出來。用轉檔器算班號的同一套邏輯再比一次，板上看到什麼就查得到什麼。
+  let at = null;
+  try{ at = mapColumns(table[0]); }catch{ /* 欄位對不到就只做逐欄比對 */ }
+  const flightId = row => {
+    if(!at) return "";
+    const code = at.airline === undefined ? "" : (row[at.airline] || "");
+    const num = at.number === undefined ? "" : (row[at.number] || "");
+    return flat(code + num);
+  };
+
+  return {
+    header: table[0],
+    rows: table.slice(1).filter(r => r.some(v => flat(v).includes(want)) ||
+                                     flightId(r).includes(want))
+  };
+}
+
+/* 這份資料是哪幾天的 —— 「你是不是抓到三年前的資料」只能用資料本身回答。 */
+export async function dateTally(src){
+  const table = parseCsv(decode(await grab(src)));
+  const at = (() => {
+    const seen = table[0].map(norm);
+    for(const name of FIELDS.schedDate.concat(FIELDS.estDate)){
+      const i = seen.indexOf(norm(name));
+      if(i !== -1) return { i, name: table[0][i].trim() };
+    }
+    return null;
+  })();
+  if(!at) return { header: table[0], column: null };
+
+  const count = new Map();
+  for(const row of table.slice(1)){
+    const v = (row[at.i] || "").trim();
+    count.set(v, (count.get(v) || 0) + 1);
+  }
+  const t = new Date(tpeNowMs());
+  return {
+    header: table[0],
+    column: at.name,
+    total: table.length - 1,
+    days: [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
+    today: t.getUTCFullYear() + "-" + pad2(t.getUTCMonth() + 1) + "-" + pad2(t.getUTCDate())
+  };
 }
 
 export { SOURCE, OUT };
