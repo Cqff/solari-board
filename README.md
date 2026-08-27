@@ -173,6 +173,20 @@ node tools/serve.mjs --source some.csv         # 吃本地 CSV，完全不連網
 > 但要申請金鑰）。因為看板是在本機跑的，金鑰放環境變數就行 —— 不會像靜態網頁
 > 那樣藏不住。這部分還沒接。
 
+### 這台機器連不連得到某個來源
+
+```bash
+node tools/probe-source.mjs https://www.taoyuan-airport.com/flight_depart
+node tools/probe-source.mjs                 # 不給網址就測目前的來源
+```
+
+會回答三件事：連不連得到（還是被 Cloudflare 之類的擋下來）、回的是網頁還是資料
+檔、內容裡看不看得到班號和時刻。看不到班號通常表示資料是 JS 另外抓的 —— 那就得
+去找它背後真正的網址，光抓那一頁沒有用。
+
+各家機房 IP 常常被擋，但同一個網址在自己家裡的網路可能就通，所以這支是在**你要
+跑看板的那台機器上**測才有意義。
+
 欄位對照在 `tools/timetable.mjs` 的 `FIELDS`，一個欄位可以列好幾種寫法，官方換
 了欄名就多加一個。**對不到必要欄位不會默默產出空班表**，它會把 CSV 實際的表頭
 印出來再結束。要單獨測轉檔：
